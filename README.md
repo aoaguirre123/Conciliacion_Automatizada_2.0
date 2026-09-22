@@ -3,7 +3,7 @@
 Sistema web de automatización de conciliaciones contables y bancarias desarrollado para el **Hotel Plaza San Francisco** en el marco de la asignatura Capstone (PTY4614) de Duoc UC (Sede Padre Alonso de Ovalle).
 
 ---
-
+<a id="informacion-del-proyecto" name="informacion-del-proyecto"></a>
 ## 📋 Información del Proyecto
 
 - **Proyecto:** Conciliación Automatizada 2.0 (Tarjetas CLP/USD + 3-Way Match Bancario)
@@ -20,6 +20,12 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 | **Jesús Antonio Márquez Bahamonde** | 21.038.733-1 | `jesu.marquez@duocuc.cl` | Desarrollador Full-Stack |
 | **Aoris Alejandro Aguirre Sanchez** | 21.778.698-3 | `ao.aguirre@duocuc.cl` | Líder de Proyecto & Analista |
 | **Victor Faviano Yañez Naranjo** | 21.805.703-9 | `vi.yanezn@duocuc.cl` | Arquitecto de Software |
+
+---
+
+<a id="tabla-de-contenidos" name="tabla-de-contenidos"></a>
+## 📋 Tabla de Contenidos
+- [Información del Proyecto](#informacion-del-proyecto)
 
 ---
 
