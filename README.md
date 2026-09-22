@@ -30,7 +30,8 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 - [Tabla de Contenidos](#tabla-de-contenidos)
 - [Enlaces Oficiales](#enlaces-oficiales)
 - [Descripción y Alcance de la Solución](#descripcion-y-alcance)
-- [Stack Tecnológico](#stack-tecnologico)
+- [Stack Tecnológico](#stack-tecnologico) 
+- [Arquitectura del Sistema](#arquitectura)
 
 ---
 <a id="enlaces-oficiales" name="enlaces-oficiales"></a>
@@ -64,3 +65,32 @@ El proyecto reemplaza el procedimiento manual de revisión línea por línea (qu
 - **Despliegue:** Servidor Local / Entorno Cloud (GCP / Azure)
 
 ---
+<a id="arquitectura" name="arquitectura"></a>
+## 📐 Arquitectura del Sistema
+
+**Estilo Arquitectónico: Arquitectura por Capas (N-Tier) orientada a un Pipeline de Procesamiento Batch con Motor de Reglas (3-Way Match).**
+El flujo de trabajo y la arquitectura general de la **Plataforma Conciliación 2.0** se estructuran en 4 capas principales:
+
+#### 1. Usuarios
+Diseñado para la interacción de las áreas operativas y de control:
+* **Tesorería**
+* **Contabilidad**
+* **Auditoría**
+
+#### 2. Insumos
+El sistema soporta la **carga directa** de 6 archivos Excel nativos provenientes de las distintas fuentes operativas:
+* **Transbank** (Comprobantes y liquidaciones)
+* **ERP CM SFM** (Registros contables)
+* **Cartola Bancaria** (Extractos bancarios)
+* **Control Interno** (Archivos auxiliares de validación)
+
+#### 3. Plataforma Conciliación 2.0 (Core)
+Módulo central encargado del procesamiento, lógica de negocio y presentación de datos:
+* **Ingesta de Archivos:** Recibe, valida y parsea los archivos cargados por los usuarios antes de su procesamiento.
+* **Motor Bancario 3-Way Match:** Ejecuta el algoritmo de conciliación tripartita para validar los movimientos bancarios frente a los registros contables y de control.
+* **Motor Conciliación Tarjetas (CLP / USD):** Procesa y concilia transacciones operadas con tarjeta de crédito/débito tanto en moneda local (CLP) como extranjera (USD).
+* **Reporte de Excepciones & Dashboard:** Módulo de visualización y salida que consolida los resultados de ambos motores, exponiendo un panel con métricas clave y la lista detallada de discrepancias/excepciones.
+
+#### 4. Base de Datos e Infraestructura
+* **Capa de Persistencia:** Gestión de datos estructurados mediante **PostgreSQL** o **SQL Server**.
+* **Despliegue:** Flexible para integrarse tanto en un **Servidor Local (On-Premise)** como en entornos **Cloud**.
