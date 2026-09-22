@@ -12,7 +12,7 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 - **Carrera:** Ingeniería en Informática
 
 ---
-
+<a id="integrantes-del-equipo" name="integrantes-del-equipo"></a>
 ## 👥 Integrantes del Equipo
 
 | Nombre Integrante | RUT | Correo Institucional | Rol en el Proyecto |
@@ -26,16 +26,21 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 <a id="tabla-de-contenidos" name="tabla-de-contenidos"></a>
 ## 📋 Tabla de Contenidos
 - [Información del Proyecto](#informacion-del-proyecto)
+- [Integrantes del Equipo](#integrantes-del-equipo)
+- [Tabla de Contenidos](#tabla-de-contenidos)
+- [Enlaces Oficiales](#enlaces-oficiales)
+- [Descripción y Alcance de la Solución](#descripcion-y-alcance)
+- [Stack Tecnológico](#stack-tecnologico)
 
 ---
-
+<a id="enlaces-oficiales" name="enlaces-oficiales"></a>
 ## 🔗 Enlaces Oficiales
 
 - **Repositorio GitHub (Público):** [https://github.com/aoaguirre123/Conciliacion_Automatizada_2.0.git](https://github.com/aoaguirre123/Conciliacion_Automatizada_2.0.git)
 - **Carpeta Compartida Google Drive:** [https://drive.google.com/drive/folders/1r__3r5JleDGuKB9gFdndDaJGxt7evbvC?usp=sharing](https://drive.google.com/drive/folders/1r__3r5JleDGuKB9gFdndDaJGxt7evbvC?usp=sharing)
 
 ---
-
+<a id="descripcion-y-alcance" name="descripcion-y-alcance"></a>
 ## 🎯 Descripción y Alcance de la Solución
 
 El proyecto reemplaza el procedimiento manual de revisión línea por línea (que tomaba entre 2 y 4 horas diarias) mediante una plataforma web desacoplada que procesa **6 archivos Excel nativos** sin modificación previa:
@@ -49,7 +54,7 @@ El proyecto reemplaza el procedimiento manual de revisión línea por línea (qu
 5. **Dashboard Ejecutivo:** Visualización interactiva en tiempo real con indicadores KPI de saldos conciliados vs. partidas pendientes de revisión.
 
 ---
-
+<a id="stack-tecnologico" name="stack-tecnologico"></a>
 ## 🛠️ Stack Tecnológico
 
 - **Frontend:** Angular SPA (Interfaz web responsive e intuitiva)
