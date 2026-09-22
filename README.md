@@ -32,7 +32,7 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 - [Descripción y Alcance de la Solución](#descripcion-y-alcance)
 - [Stack Tecnológico](#stack-tecnologico) 
 - [Arquitectura del Sistema](#arquitectura)
-
+- [Metodología de Trabajo](#metodologia)
 ---
 <a id="enlaces-oficiales" name="enlaces-oficiales"></a>
 ## 🔗 Enlaces Oficiales
@@ -95,7 +95,7 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 * **Capa de Persistencia:** Gestión de datos estructurados mediante **PostgreSQL** o **SQL Server**.
 * **Despliegue:** Flexible para integrarse tanto en un **Servidor Local (On-Premise)** como en entornos **Cloud**.
 ---
-
+<a id="metodologia" name="metodologia"></a>
 ## 🔄 Metodología de Trabajo
 
 Para la ejecución del proyecto se utiliza una **metodología ágil adaptada (Scrum)**, organizada en iteraciones o **Sprints de 2 semanas**. Este marco de trabajo facilita la realización de entregas incrementales y funcionales del producto, permitiendo la revisión continua junto al cliente y garantizando una alta capacidad de adaptación frente a ajustes en las reglas de conciliación bancaria o variaciones en las estructuras de los archivos de entrada.
