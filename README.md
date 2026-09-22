@@ -94,3 +94,46 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 #### 4. Base de Datos e Infraestructura
 * **Capa de Persistencia:** Gestión de datos estructurados mediante **PostgreSQL** o **SQL Server**.
 * **Despliegue:** Flexible para integrarse tanto en un **Servidor Local (On-Premise)** como en entornos **Cloud**.
+---
+
+## 🔄 Metodología de Trabajo
+
+Para la ejecución del proyecto se utiliza una **metodología ágil adaptada (Scrum)**, organizada en iteraciones o **Sprints de 2 semanas**. Este marco de trabajo facilita la realización de entregas incrementales y funcionales del producto, permitiendo la revisión continua junto al cliente y garantizando una alta capacidad de adaptación frente a ajustes en las reglas de conciliación bancaria o variaciones en las estructuras de los archivos de entrada.
+
+
+###  Fases del Proyecto
+
+####  Fase 1: Levantamiento y Análisis
+* **Objetivo:** Extracción y formalización de las reglas del motor de conciliación.
+* **Actividades:**
+  * Realización de entrevistas con los actores clave del proceso.
+  * Análisis detallado de planillas y cartolas bancarias reales del **Hotel Plaza San Francisco**.
+  * Definición de casos de borde y patrones de discrepancia habituales.
+
+####  Fase 2: Diseño y Arquitectura
+* **Objetivo:** Definición de la estructura de datos, componentes de software y experiencia de usuario.
+* **Actividades:**
+  * Modelado relacional de la Base de Datos (PostgreSQL / SQL Server).
+  * Diseños y prototipado UI/UX de la interfaz gráfica en **Angular**.
+  * Definición de la arquitectura de la API REST y especificación de endpoints en **Django**.
+
+####  Fase 3: Desarrollo Incremental
+* **Objetivo:** Implementación iterativa de los componentes centrales de la plataforma.
+* **Actividades:**
+  * **Módulo de Ingesta:** Lectura, validación y parseo de los 6 Excels nativos.
+  * **Motor de Conciliación:** Desarrollo del algoritmo *3-Way Match* bancario y motor de tarjetas (CLP / USD).
+  * **Módulo de Discrepancias:** Gestión y clasificación de inconsistencias.
+  * **Dashboards:** Visualización gráfica de métricas y reportes ejecutivos.
+
+####  Fase 4: Pruebas y Control de Calidad (QA)
+* **Objetivo:** Asegurar la consistencia, seguridad e integridad financiera de los cálculos.
+* **Actividades:**
+  * Pruebas unitarias y de integración para frontend y backend.
+  * Pruebas de **precisión algorítmica** utilizando volúmenes de datos reales para garantizar la exactitud en el cruce de transacciones.
+
+####  Fase 5: Despliegue y Documentación
+* **Objetivo:** Puesta en producción y entrega formal de la solución.
+* **Actividades:**
+  * Publicación e integración continua en entorno Cloud (**GCP / Azure**).
+  * Elaboración del manual de usuario para el equipo operativo (Tesorería, Contabilidad, Auditoría).
+  * Documentación técnica del repositorio y finalización del proyecto.
