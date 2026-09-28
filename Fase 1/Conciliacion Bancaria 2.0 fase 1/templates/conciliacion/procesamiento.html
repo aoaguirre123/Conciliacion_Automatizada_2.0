@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Procesamiento{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/procesamiento.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="processing-page">
+    <header class="processing-header">
+        <div>
+            <p class="processing-eyebrow">Conciliación bancaria</p>
+            <h1>Procesamiento de archivos</h1>
+            <p class="processing-intro">Carga los respaldos de cada canal y revisa los resultados por moneda.</p>
+        </div>
+        <span class="processing-version">v1.0</span>
+    </header>
+
+    {% if errores %}
+    <div class="processing-alert processing-alert--warning" role="alert">
+        {% for error in errores %}<p>{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if ws == 1 %}
+    <div class="processing-alert {% if abonado > 0 %}processing-alert--success{% else %}processing-alert--warning{% endif %}" role="alert">
+        {% if abonado > 0 %}
+            <strong>Abono encontrado.</strong> El abono calculado de Transbank por US$ {{ abonado }} aparece en la cartola del banco.
+        {% else %}
+            <strong>Atención.</strong> No se encontró el abono calculado de Transbank en la cartola del banco. {{ msg }}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <section class="processing-grid" aria-label="Procesamiento por moneda">
+        <div class="processing-column">
+            <article class="processing-card processing-card--compact">
+                <div class="processing-card__heading">
+                    <span class="processing-icon"><i data-lucide="sliders-horizontal"></i></span>
+                    <div>
+                        <p class="processing-kicker">Configuración</p>
+                        <h2>Parametrización de valores</h2>
+                    </div>
+                </div>
+                <div class="processing-fields">
+                    <label class="processing-field"><span>Monto en dólares</span><input type="text" id="monto-dolares" placeholder="US$ 0"></label>
+                    <label class="processing-field"><span>Monto en pesos</span><input type="text" id="monto-pesos" placeholder="$ 0"></label>
+                </div>
+                <button type="button" class="processing-button processing-button--secondary"><i data-lucide="upload"></i>Cargar parámetros</button>
+            </article>
+
+            <article class="processing-card">
+                <div class="processing-card__heading">
+                    <span class="processing-icon"><i data-lucide="circle-dollar-sign"></i></span>
+                    <div><p class="processing-kicker">Análisis consolidado</p><h2>Dólares</h2></div>
+                </div>
+                <form action="" method="post" enctype="multipart/form-data" class="processing-form">
+                    {% csrf_token %}
+                    <div class="processing-upload-list">
+                        <label class="processing-upload"><span>ERP</span><input type="file" id="archivo1" name="archivo1" accept=".xls,.xlsx"></label>
+                        <label class="processing-upload"><span>Dólar Amex</span><input type="file" id="archivo2" name="archivo2" accept=".xls,.xlsx"></label>
+                        <label class="processing-upload"><span>Dinners</span><input type="file" id="archivo3" name="archivo3" accept=".xls,.xlsx"></label>
+                        <label class="processing-upload"><span>Dólar Visa</span><input type="file" id="archivo4" name="archivo4" accept=".xls,.xlsx"></label>
+                        <label class="processing-upload"><span>Mastercard</span><input type="file" id="archivo5" name="archivo5" accept=".xls,.xlsx"></label>
+                        <label class="processing-upload"><span>Banco</span><input type="file" id="archivo6" name="archivo6" accept=".xls,.xlsx"></label>
+                        <label class="processing-upload"><span>Transbank</span><input type="file" id="archivo7" name="archivo7" accept=".xls,.xlsx"></label>
+                    </div>
+                    <button type="submit" class="processing-button processing-button--primary"><i data-lucide="play"></i>Analizar archivos por ERP</button>
+                </form>
+
+                {% if procesado %}
+                <div class="processing-actions">
+                    <a href="{% url 'descargar_excel_dif' %}" class="processing-button processing-button--ghost"><i data-lucide="download"></i>Descargar transacciones ubicadas</a>
+                    <a href="{% url 'descargar_excel_nopresente' %}" class="processing-button processing-button--ghost"><i data-lucide="download"></i>Descargar transacciones no ubicadas en ERP</a>
+                    <a href="{% url 'descargar_excel' %}" class="processing-button processing-button--ghost"><i data-lucide="download"></i>Descargar documentos ERP no encontrados en tarjetas</a>
+                </div>
+                {% endif %}
+            </article>
+
+            <article class="processing-card processing-card--table">
+                <div class="processing-card__heading processing-card__heading--small"><div><p class="processing-kicker">Resultado</p><h2>Hotelería San Francisco: dólar</h2></div></div>
+                <div class="processing-table-wrap">
+                    <table class="processing-table">
+                        <thead><tr><th>Cuenta</th><th>Ventas CM</th><th>Ventas TBK</th><th>Diferencia</th></tr></thead>
+                        <tbody>
+                            {% for item in data_dolar %}<tr>{% for clave, valor in item.items %}<td class="{% if clave == 'Total' %}processing-total{% endif %}">{{ valor }}</td>{% endfor %}</tr>
+                            {% empty %}<tr><td colspan="4">Carga los archivos y presiona «Analizar archivos por ERP» para ver el resultado.</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </div>
+
+        <div class="processing-column">
+            <article class="processing-card">
+                <div class="processing-card__heading">
+                    <span class="processing-icon"><i data-lucide="banknote"></i></span>
+                    <div><p class="processing-kicker">Análisis consolidado</p><h2>Pesos chilenos (CLP)</h2></div>
+                </div>
+                <div class="processing-upload-list">
+                    <label class="processing-upload"><span>ERP</span><input type="file" id="clp-archivo1"></label>
+                    <label class="processing-upload"><span>Amex</span><input type="file" id="clp-archivo2"></label>
+                    <label class="processing-upload"><span>Dinners</span><input type="file" id="clp-archivo3"></label>
+                    <label class="processing-upload"><span>Visa</span><input type="file" id="clp-archivo4"></label>
+                    <label class="processing-upload"><span>Mastercard</span><input type="file" id="clp-archivo5"></label>
+                    <label class="processing-upload"><span>Débito</span><input type="file" id="clp-archivo6"></label>
+                    <label class="processing-upload"><span>Banco</span><input type="file" id="clp-archivo7"></label>
+                    <label class="processing-upload"><span>Transbank</span><input type="file" id="clp-archivo8"></label>
+                </div>
+                <div class="processing-actions">
+                    <button type="button" class="processing-button processing-button--primary"><i data-lucide="play"></i>Analizar archivos</button>
+                    <button type="button" class="processing-button processing-button--ghost"><i data-lucide="file-text"></i>Abrir reporte</button>
+                </div>
+            </article>
+
+            <article class="processing-card processing-card--table">
+                <div class="processing-card__heading processing-card__heading--small"><div><p class="processing-kicker">Resultado</p><h2>Resumen general</h2></div></div>
+                <div class="processing-table-wrap">
+                    <table class="processing-table">
+                        <thead><tr><th>Cuenta</th><th>Ventas CM</th><th>Ventas TBK</th><th>Diferencia</th></tr></thead>
+                        <tbody>
+                            {% for item in data %}<tr>{% for clave, valor in item.items %}<td class="{% if clave == 'Total' %}processing-total{% endif %}">{{ valor }}</td>{% endfor %}</tr>
+                            {% empty %}<tr><td colspan="4">Sin resultados todavía.</td></tr>{% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </div>
+    </section>
+</div>
+{% endblock %}
