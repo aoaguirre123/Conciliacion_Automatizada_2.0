@@ -1,0 +1,209 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;800&display=swap');
+
+.auth-page *,
+.auth-page *::before,
+.auth-page *::after {
+    box-sizing: border-box;
+}
+/* ---------- Página ---------- */
+.auth-page {
+    min-height: 75vh;
+    display: grid;
+    place-items: center;
+    padding: 21px;
+    background:
+        radial-gradient(60rem 30rem at 10% 0%, var(--color-fondo-alt) 0%, transparent 60%),
+        radial-gradient(40rem 25rem at 100% 100%, var(--acento-suave) 0%, transparent 65%),
+        var(--color-fondo);
+    font-family: var(--font);
+}
+ 
+/* ---------- Tarjeta dividida ---------- */
+.auth-card {
+    width: min(1040px, 100%);
+    min-height: 270px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: var(--color-fondo-alt);
+    border: 3px solid var(--color-primario-alt);
+    border-radius: 28px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px -20px rgba(27, 42, 58, .4);
+}
+ 
+/* ---------- Lado izquierdo ---------- */
+.auth-panel {
+    display: flex;
+    align-items: center;
+    padding: 56px 8%;
+}
+ 
+.auth-panel__inner {
+    width: 100%;
+    max-width: 380px;
+    margin-inline: auto;
+}
+ 
+.auth-panel h1 {
+    margin: 0 0 8px;
+    font-size: clamp(1.9rem, 3.2vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: var(--color-primario);
+    line-height: 1.1;
+}
+ 
+.auth-lead {
+    margin: 0 0 32px;
+    color: var(--color-texto-secundario);
+    font-size: .95rem;
+}
+ 
+.auth-alert {
+    margin: 0 0 20px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--color-alerta);
+    background: var(--alerta-suave);
+    color: var(--color-alerta);
+    font-size: .9rem;
+}
+ 
+/* ---------- Formulario ---------- */
+.auth-form { display: grid; gap: 18px; }
+ 
+.field { display: grid; gap: 6px; }
+ 
+.field label {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--color-primario-alt);
+}
+ 
+.field input,
+.field__password input {
+    width: 100%;
+    padding: 13px 14px;
+    font: inherit;
+    font-size: .95rem;
+    color: var(--color-texto);
+    background: var(--color-fondo-alt);
+    border: 1.5px solid var(--color-borde);
+    border-radius: 10px;
+    transition: border-color .15s, box-shadow .15s;
+}
+ 
+.field input:hover { border-color: var(--color-acento); }
+ 
+.field input:focus {
+    outline: none;
+    border-color: var(--color-acento);
+    box-shadow: 0 0 0 4px var(--acento-suave);
+}
+ 
+.field__password { position: relative; }
+.field__password input { padding-right: 84px; }
+ 
+.toggle-pass {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    padding: 6px 10px;
+    font: inherit;
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--color-primario);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.toggle-pass:hover { background: var(--acento-suave); }
+.toggle-pass:focus-visible { outline: 2px solid var(--color-acento); }
+ 
+/* ---------- Recordarme / Olvidaste ---------- */
+.auth-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+ 
+.check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .85rem;
+    color: var(--color-texto-secundario);
+    cursor: pointer;
+}
+ 
+.check input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--color-primario);
+}
+ 
+.link-forgot {
+    padding: 0;
+    font: inherit;
+    font-size: .85rem;
+    font-weight: 500;
+    color: var(--color-alerta);
+    background: none;
+    border: 0;
+    cursor: default;          /* sin funcionalidad por ahora */
+}
+.link-forgot:hover { text-decoration: underline; }
+ 
+/* ---------- Botón principal ---------- */
+.btn-primary {
+    margin-top: 6px;
+    padding: 14px 20px;
+    font: inherit;
+    font-size: .95rem;
+    font-weight: 600;
+    color: var(--color-fondo-alt);
+    background: var(--color-primario);
+    border: 0;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 10px 20px -8px var(--primario-sombra);
+    transition: background .15s, transform .1s, box-shadow .15s;
+}
+.btn-primary:hover { background: var(--primario-hover); }
+.btn-primary:active { transform: translateY(1px); box-shadow: none; }
+.btn-primary:focus-visible { outline: 3px solid var(--color-acento); outline-offset: 2px; }
+ 
+/* ---------- Lado derecho (imagen) ---------- */
+.auth-visual {
+    background-color: var(--color-primario-alt);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+ 
+/* ---------- Responsive ---------- */
+@media (max-width: 820px) {
+    .auth-card {
+        grid-template-columns: 1fr;
+        min-height: 0;
+    }
+    .auth-visual {
+        order: -1;
+        height: 200px;
+    }
+    .auth-panel { padding: 36px 24px 40px; }
+}
+ 
+@media (max-width: 420px) {
+    .auth-page { padding: 12px; }
+    .auth-card { border-radius: 20px; }
+}
+ 
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+}

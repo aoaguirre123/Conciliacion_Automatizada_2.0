@@ -1,0 +1,28 @@
+{% load static %}
+
+<header class="navbar">
+    <div class="navbar__container">
+        <a href="{% url 'home' %}" class="navbar__brand" aria-label="Ir al inicio">
+            <span class="navbar__logo">
+                <img src="{% static 'img/logo.webp' %}" alt="Hotel Plaza San Francisco">
+            </span>
+        </a>
+
+        <div class="navbar__session">
+            {% if user.is_authenticated %}
+                <span class="navbar__user">
+                    <span class="navbar__user-label">Sesión activa</span>
+                    {{ user.get_full_name|default:user.username }}
+                </span>
+                
+                
+                <form action="{% url 'usuarios:logout' %}" method="post" class="navbar__form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn--outline">Cerrar sesión</button>
+                </form>
+            {% else %}
+                <a href="{% url 'usuarios:login' %}" class="btn btn--primary">Iniciar sesión</a>
+            {% endif %}
+        </div>
+    </div>
+</header>

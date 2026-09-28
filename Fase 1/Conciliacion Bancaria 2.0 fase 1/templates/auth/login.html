@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Iniciar sesión{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+
+<section class="auth-page">
+    <div class="auth-card">
+
+        <div class="auth-panel">
+            <div class="auth-panel__inner">
+                <h1>Bienvenido de nuevo</h1>
+                <p class="auth-lead">Inicia sesión en tu cuenta.</p>
+
+                {% if mensaje %}
+                    <p class="auth-alert" role="alert">{{ mensaje }}</p>
+                {% endif %}
+
+                <form method="post" class="auth-form">
+                    {% csrf_token %}
+
+                    <div class="field">
+                           <label for="email">Correo electrónico</label>
+                           <input id="email" name="email" type="email"
+                               autocomplete="email" required autofocus>
+                    </div>
+
+                    <div class="field">
+                        <label for="password">Contraseña</label>
+                        <div class="field__password">
+                            <input id="password" name="password" type="password"
+                                   autocomplete="current-password" required>
+                            <button type="button" class="toggle-pass"
+                                    aria-label="Mostrar contraseña" aria-pressed="false">
+                                Mostrar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="auth-row">
+                        <label class="check">
+                            <input type="checkbox" name="recordarme">
+                            <span>Recordarme</span>
+                        </label>
+
+                        <!-- Sin funcionalidad por ahora -->
+                        <button type="button" class="link-forgot" aria-disabled="true">
+                            ¿Olvidaste tu contraseña?
+                        </button>
+                    </div>
+
+                    <button type="submit" class="btn-primary">Ingresar</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="auth-visual"
+             style="background-image: url('{% static 'img/fondologin.png' %}');"
+             role="img" aria-label="Imagen decorativa"></div>
+
+    </div>
+</section>
+
+<script>
+    (function () {
+        var btn = document.querySelector('.toggle-pass');
+        var input = document.getElementById('password');
+        if (!btn || !input) return;
+        btn.addEventListener('click', function () {
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.textContent = show ? 'Ocultar' : 'Mostrar';
+            btn.setAttribute('aria-pressed', show);
+            btn.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+        });
+    })();
+</script>
+{% endblock %}

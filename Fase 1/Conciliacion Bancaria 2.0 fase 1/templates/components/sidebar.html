@@ -1,0 +1,53 @@
+{% load static %}
+
+<aside class="sidebar sidebar--collapsed" data-sidebar aria-label="Navegacion principal">
+    <button class="sidebar__toggle" type="button" data-sidebar-toggle aria-expanded="false" aria-controls="sidebar-navigation" aria-label="Expandir menu">
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+    </button>
+
+    <nav class="sidebar__nav" id="sidebar-navigation">
+        <div class="sidebar__section">
+            <span class="sidebar__section-title">Inicio</span>
+            <a class="sidebar__link {% if request.resolver_match.url_name == 'home' %}sidebar__link--active{% endif %}" href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' %}aria-current="page"{% endif %} title="Home">
+                <i data-lucide="house" aria-hidden="true"></i>
+                <span class="sidebar__label">Home</span>
+            </a>
+        </div>
+
+        <div class="sidebar__section">
+            <span class="sidebar__section-title">Operación</span>
+            <a class="sidebar__link {% if request.resolver_match.url_name == 'conciliacion' %}sidebar__link--active{% endif %}" href="{% url 'conciliacion:conciliacion' %}" {% if request.resolver_match.url_name == 'conciliacion' %}aria-current="page"{% endif %} title="Conciliación">
+                <i data-lucide="landmark" aria-hidden="true"></i>
+                <span class="sidebar__label">Conciliación</span>
+            </a>
+            <a class="sidebar__link sidebar__link--placeholder" href="#" data-placeholder title="Importaciones">
+                <i data-lucide="file-up" aria-hidden="true"></i>
+                <span class="sidebar__label">Importaciones</span>
+            </a>
+            <a class="sidebar__link sidebar__link--placeholder" href="#" data-placeholder title="Reportes">
+                <i data-lucide="chart-no-axes-combined" aria-hidden="true"></i>
+                <span class="sidebar__label">Reportes</span>
+            </a>
+        </div>
+
+        <div class="sidebar__section">
+            <span class="sidebar__section-title">Administración</span>
+            <a class="sidebar__link sidebar__link--placeholder" href="#" data-placeholder title="Hoteles">
+                <i data-lucide="building-2" aria-hidden="true"></i>
+                <span class="sidebar__label">Hoteles</span>
+            </a>
+            <a class="sidebar__link sidebar__link--placeholder" href="#" data-placeholder title="Usuarios">
+                <i data-lucide="users" aria-hidden="true"></i>
+                <span class="sidebar__label">Usuarios</span>
+            </a>
+        </div>
+    </nav>
+
+    <div class="sidebar__footer">
+
+        <a class="sidebar__link sidebar__link--placeholder" href="#" data-placeholder title="Configuracion">
+            <i data-lucide="settings" aria-hidden="true"></i>
+            <span class="sidebar__label">Configuración</span>
+        </a>
+    </div>
+</aside>
