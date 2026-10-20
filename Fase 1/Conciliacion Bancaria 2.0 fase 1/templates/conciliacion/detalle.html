@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block titulo %}Conciliación N° {{ conciliacion.pk }}{% endblock %}
+
+{% block contenido %}
+<nav class="migas" aria-label="Ruta">
+    <a href="{% url 'conciliacion:historial' %}">Historial</a>
+    <span aria-hidden="true">/</span>
+    <span>N° {{ conciliacion.pk }}</span>
+</nav>
+
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>Conciliación en {{ conciliacion.get_moneda_display|lower }} N° {{ conciliacion.pk }}</h1>
+        <p class="encabezado__bajada">
+            {{ conciliacion.creada|date:"l j \d\e F \d\e Y, H:i" }}{% if conciliacion.usuario %}, por {{ conciliacion.usuario.get_full_name|default:conciliacion.usuario.username }}{% endif %}.
+        </p>
+    </div>
+    <a class="boton boton--secundario" href="{% if conciliacion.moneda == 'CLP' %}{% url 'conciliacion:pesos' %}{% else %}{% url 'conciliacion:dolares' %}{% endif %}">
+        <i data-lucide="plus" aria-hidden="true"></i> Nueva conciliación
+    </a>
+</header>
+
+{% for mensaje in messages %}
+<div class="aviso aviso--exito aviso--separado" role="status">
+    <i data-lucide="circle-check" aria-hidden="true"></i>
+    <p>{{ mensaje }}</p>
+</div>
+{% endfor %}
+
+<article class="tarjeta tarjeta--compacta archivos-usados">
+    <h2>Archivos analizados</h2>
+    <ul>
+        {% for a in conciliacion.archivos %}
+        <li><strong>{{ a.etiqueta }}</strong> <span>{{ a.nombre }} ({{ a.tamano|filesizeformat }})</span></li>
+        {% endfor %}
+    </ul>
+</article>
+
+{% if conciliacion.moneda == "CLP" %}
+    {% include "conciliacion/_resultado_clp.html" %}
+{% else %}
+    {% include "conciliacion/_resultado_usd.html" %}
+{% endif %}
+
+<article class="tarjeta separado-arriba">
+    <div class="tarjeta__cabeza">
+        <h2>Descargar detalle en Excel</h2>
+        <p class="tarjeta__bajada">Los archivos quedan guardados con esta conciliación: puedes volver a bajarlos cuando quieras.</p>
+    </div>
+    <div class="descargas">
+        {% for r in reportes %}
+        <a class="descarga" href="{{ r.get_absolute_url }}">
+            <span class="descarga__icono"><i data-lucide="file-spreadsheet" aria-hidden="true"></i></span>
+            <span class="descarga__titulo">{{ r.titulo }}</span>
+            <span class="descarga__texto">{{ r.descripcion }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</article>
+{% endblock %}

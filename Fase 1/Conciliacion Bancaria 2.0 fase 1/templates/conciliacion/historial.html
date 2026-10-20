@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block titulo %}Historial de conciliaciones{% endblock %}
+
+{% block contenido %}
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>Historial de conciliaciones</h1>
+        <p class="encabezado__bajada">Cada conciliación queda guardada con su resultado y sus archivos Excel. Ábrela para verla de nuevo o descarga los reportes directamente.</p>
+    </div>
+</header>
+
+<div class="filtros" role="group" aria-label="Filtrar por moneda">
+    <a class="filtro{% if not moneda %} filtro--activo{% endif %}" href="{% url 'conciliacion:historial' %}"{% if not moneda %} aria-current="true"{% endif %}>Todas</a>
+    <a class="filtro{% if moneda == 'USD' %} filtro--activo{% endif %}" href="?moneda=USD"{% if moneda == 'USD' %} aria-current="true"{% endif %}>Dólares</a>
+    <a class="filtro{% if moneda == 'CLP' %} filtro--activo{% endif %}" href="?moneda=CLP"{% if moneda == 'CLP' %} aria-current="true"{% endif %}>Pesos</a>
+</div>
+
+<article class="tarjeta tarjeta--tabla">
+    {% if pagina.object_list %}
+    <div class="tabla-marco tabla-marco--sin-borde">
+        <table class="tabla tabla--ancha">
+            <thead>
+                <tr>
+                    <th scope="col">N°</th>
+                    <th scope="col">Fecha</th>
+                    <th scope="col">Tipo</th>
+                    <th scope="col">Resultado</th>
+                    <th scope="col">Usuario</th>
+                    <th scope="col">Descargas</th>
+                    <th scope="col"><span class="oculto">Acciones</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in pagina %}
+                <tr>
+                    <th scope="row" class="num">{{ c.pk }}</th>
+                    <td class="num">{{ c.creada|date:"d-m-Y H:i" }}</td>
+                    <td>{{ c.get_moneda_display }}</td>
+                    <td>
+                        {% if c.cuadrado %}<span class="etiqueta etiqueta--ok">Cuadrado</span>
+                        {% else %}<span class="etiqueta etiqueta--error">Por revisar {{ c.simbolo }} {{ c.monto_por_revisar|floatformat:"-2g" }}</span>{% endif %}
+                    </td>
+                    <td>{{ c.usuario.get_full_name|default:c.usuario.username|default:"—" }}</td>
+                    <td>
+                        <div class="iconos-descarga">
+                            {% for r in c.reportes.all %}
+                            <a class="icono-descarga" href="{{ r.get_absolute_url }}" title="{{ r.titulo }}" aria-label="Descargar {{ r.titulo }} de la conciliación {{ c.pk }}">
+                                <i data-lucide="file-spreadsheet" aria-hidden="true"></i>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td class="monto"><a class="enlace-fila" href="{{ c.get_absolute_url }}">Ver detalle</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if pagina.has_other_pages %}
+    <nav class="paginacion" aria-label="Páginas">
+        {% if pagina.has_previous %}<a class="boton boton--secundario" href="?{% if moneda %}moneda={{ moneda }}&amp;{% endif %}pagina={{ pagina.previous_page_number }}">Anterior</a>{% endif %}
+        <span>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
+        {% if pagina.has_next %}<a class="boton boton--secundario" href="?{% if moneda %}moneda={{ moneda }}&amp;{% endif %}pagina={{ pagina.next_page_number }}">Siguiente</a>{% endif %}
+    </nav>
+    {% endif %}
+    {% else %}
+    <div class="vacio">
+        <p>Todavía no hay conciliaciones{% if moneda %} en {% if moneda == 'USD' %}dólares{% else %}pesos{% endif %}{% endif %}.</p>
+        <p><a href="{% url 'conciliacion:dolares' %}">Conciliar en dólares</a> o <a href="{% url 'conciliacion:pesos' %}">conciliar en pesos</a>.</p>
+    </div>
+    {% endif %}
+</article>
+{% endblock %}

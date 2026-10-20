@@ -1,0 +1,5 @@
+Django>=5.1,<6.2
+pandas>=2.2
+openpyxl>=3.1
+xlrd>=2.0      # cartolas .xls de Amex, Diners, Visa y Mastercard
+httpx>=0.27    # dólar observado (mindicador.cl)

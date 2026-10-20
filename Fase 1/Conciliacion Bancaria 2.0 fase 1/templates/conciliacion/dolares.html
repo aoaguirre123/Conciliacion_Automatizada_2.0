@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block titulo %}Conciliación en dólares{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/conciliacion.js' %}?v={{ APP_VERSION }}" defer></script>
+{% endblock %}
+
+{% block contenido %}
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>Conciliación en dólares</h1>
+        <p class="encabezado__bajada">Cruza el ERP con Transbank, las cartolas de tarjetas y el banco. Cada análisis queda guardado en el <a href="{% url 'conciliacion:historial' %}">historial</a>.</p>
+    </div>
+    {% if dolar_hoy %}
+    <div class="dolar">
+        <i data-lucide="circle-dollar-sign" aria-hidden="true"></i>
+        <div>
+            <span class="dolar__etiqueta">Dólar observado del {{ dolar_hoy.fecha }}</span>
+            <span class="dolar__valor num">$ {{ dolar_hoy.valor|floatformat:"2g" }}</span>
+        </div>
+    </div>
+    {% endif %}
+</header>
+
+{% if errores %}
+<div class="aviso aviso--error aviso--separado" role="alert">
+    <i data-lucide="circle-alert" aria-hidden="true"></i>
+    <div>
+        <strong>No se pudo completar el análisis</strong>
+        {% for error in errores %}<p>{{ error }}</p>{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+
+
+<form method="post" enctype="multipart/form-data" class="flujo" data-analisis>
+    {% csrf_token %}
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true">1</span>
+            <div>
+                <h2>Carga los archivos</h2>
+                <p class="tarjeta__bajada">Haz clic en cada casilla o arrastra el archivo encima. Solo carga los que vas a usar.</p>
+            </div>
+        </div>
+
+        <div class="grupo">
+            <div class="grupo__cabeza">
+                <h3>Contabilidad y liquidación</h3>
+                <p class="grupo__ayuda">El ERP y Transbank son la base del cruce. El banco es opcional y sirve para verificar el abono.</p>
+            </div>
+            <div class="casillas">
+                {% include "conciliacion/_archivo.html" with campo="archivo1" titulo="ERP" icono="book-open" acepta=".xls,.xlsx" ayuda="Movimientos del sistema contable" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo7" titulo="Transbank" icono="credit-card" acepta=".xls,.xlsx" ayuda="Liquidación de ventas en dólares. Requiere el ERP." requiere="archivo1" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo6" titulo="Banco" icono="landmark" acepta=".xls,.xlsx" ayuda="Cartola para verificar el abono. Requiere Transbank." requiere="archivo7" %}
+            </div>
+        </div>
+
+        <div class="grupo">
+            <div class="grupo__cabeza">
+                <h3>Cartolas de tarjetas en dólares</h3>
+                <p class="grupo__ayuda">Formato .xls, tal como lo entrega cada emisor.</p>
+            </div>
+            <div class="casillas casillas--cuatro">
+                {% include "conciliacion/_archivo.html" with campo="archivo2" titulo="American Express" icono="file-spreadsheet" acepta=".xls" ayuda="Cartola Amex US$" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo3" titulo="Diners" icono="file-spreadsheet" acepta=".xls" ayuda="Cartola Diners US$" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo4" titulo="Visa" icono="file-spreadsheet" acepta=".xls" ayuda="Cartola Visa US$" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo5" titulo="Mastercard" icono="file-spreadsheet" acepta=".xls" ayuda="Cartola Mastercard US$" %}
+            </div>
+        </div>
+    </article>
+
+    <article class="tarjeta analisis">
+        <div class="analisis__estado">
+            <div class="tarjeta__titulo">
+                <span class="paso" aria-hidden="true">2</span>
+                <div>
+                    <h2>Analiza</h2>
+                    <p class="tarjeta__bajada"><span data-contador>0</span> de <span data-total>7</span> archivos cargados</p>
+                </div>
+            </div>
+            <ul class="pastillas" aria-label="Archivos cargados">
+                <li class="pastilla" data-pastilla="archivo1"><span class="pastilla__punto" aria-hidden="true"></span>ERP</li>
+                <li class="pastilla" data-pastilla="archivo7"><span class="pastilla__punto" aria-hidden="true"></span>Transbank</li>
+                <li class="pastilla" data-pastilla="archivo6"><span class="pastilla__punto" aria-hidden="true"></span>Banco</li>
+                <li class="pastilla" data-pastilla="archivo2"><span class="pastilla__punto" aria-hidden="true"></span>American Express</li>
+                <li class="pastilla" data-pastilla="archivo3"><span class="pastilla__punto" aria-hidden="true"></span>Diners</li>
+                <li class="pastilla" data-pastilla="archivo4"><span class="pastilla__punto" aria-hidden="true"></span>Visa</li>
+                <li class="pastilla" data-pastilla="archivo5"><span class="pastilla__punto" aria-hidden="true"></span>Mastercard</li>
+            </ul>
+        </div>
+
+        <div class="analisis__accion">
+            <p class="analisis__nota" data-nota aria-live="polite"></p>
+            <button type="submit" class="boton boton--principal boton--grande boton--ancho" data-analizar>
+                <i data-lucide="play" aria-hidden="true"></i>
+                <span data-analizar-texto>Analizar archivos</span>
+            </button>
+            <p class="analisis__pie">Puede tardar unos segundos si los archivos son grandes.</p>
+        </div>
+    </article>
+</form>
+{% endblock %}

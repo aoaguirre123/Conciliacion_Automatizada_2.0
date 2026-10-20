@@ -32,6 +32,11 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 - [Descripción y Alcance de la Solución](#descripcion-y-alcance)
 - [Stack Tecnológico](#stack-tecnologico) 
 - [Arquitectura del Sistema](#arquitectura)
+- [Estado Actual del Desarrollo (v3.1)](#estado-actual)
+- [Puesta en Marcha](#puesta-en-marcha)
+- [Gestión de Usuarios](#usuarios)
+- [Actualización desde la Versión 3.0](#actualizacion)
+- [Estructura del Proyecto](#estructura)
 - [Metodología de Trabajo](#metodologia)
 ---
 <a id="enlaces-oficiales" name="enlaces-oficiales"></a>
@@ -94,6 +99,98 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 #### 4. Base de Datos e Infraestructura
 * **Capa de Persistencia:** Gestión de datos estructurados mediante **PostgreSQL** o **SQL Server**.
 * **Despliegue:** Flexible para integrarse tanto en un **Servidor Local (On-Premise)** como en entornos **Cloud**.
+---
+<a id="estado-actual" name="estado-actual"></a>
+## 🚦 Estado Actual del Desarrollo (v3.1)
+
+La versión vigente del sistema es **Conciliación bancaria v3.1**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Fase 1/Conciliacion Bancaria 2.0 fase 1/`.
+
+#### Módulos Disponibles
+* **Conciliación en Dólares (USD):** Cruce entre ERP, Transbank, cartolas de las marcas internacionales (**Amex, Diners, Visa y Mastercard**) y banco, utilizando el dólar observado obtenido desde **mindicador.cl**.
+* **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**) contra los pagos con tarjeta del **BORDERO**, con verificación del abono en la cartola bancaria.
+* **Historial:** Registro de todas las conciliaciones guardadas, con su resultado y los reportes Excel descargables.
+
+#### Tecnologías Utilizadas en esta Versión
+* **Framework:** Django 5.1+ (plantillas HTML, CSS y JavaScript)
+* **Base de Datos:** SQLite
+* **Procesamiento de Archivos:** Pandas, OpenPyXL y xlrd (cartolas `.xls` de Amex, Diners, Visa y Mastercard)
+* **Servicios Externos:** httpx para consultar el dólar observado en mindicador.cl
+
+> 💡 **Verificación de versión:** el pie de página del sistema muestra **Conciliación bancaria v3.1**.
+
+---
+<a id="puesta-en-marcha" name="puesta-en-marcha"></a>
+## 🚀 Puesta en Marcha
+
+#### Requisitos
+* **Python 3.12** o superior
+* **Git**
+
+#### Instalación en Windows
+Abrir una terminal en la raíz del repositorio clonado y ejecutar:
+
+```
+cd "Fase 1\Conciliacion Bancaria 2.0 fase 1"
+python -m venv entorno
+entorno\Scripts\activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
+```
+
+Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña del usuario.
+
+> 🍎 **macOS / Linux:** activar el entorno con `source entorno/bin/activate`.
+
+---
+<a id="usuarios" name="usuarios"></a>
+## 👤 Gestión de Usuarios
+
+* **Base de datos heredada:** `db.sqlite3` proviene del proyecto anterior, por lo que los usuarios existentes siguen funcionando.
+* **Inicio de sesión por correo:** el login solicita **correo electrónico**, por lo que cada usuario debe tener un correo registrado.
+* **Creación de usuarios:**
+  * Desde la terminal con `python manage.py createsuperuser`.
+  * Desde la opción **"Usuarios y permisos"** del menú (disponible solo para usuarios *staff*).
+
+---
+<a id="actualizacion" name="actualizacion"></a>
+## 🔁 Actualización desde la Versión 3.0
+
+1. Detener el servidor.
+2. Actualizar el repositorio con `git pull` (o reemplazar la carpeta completa del proyecto por la nueva versión).
+3. Ejecutar una vez:
+
+```
+python manage.py migrate
+```
+
+Este paso crea las tablas del historial. Los usuarios existentes se mantienen.
+
+---
+<a id="estructura" name="estructura"></a>
+## 📁 Estructura del Proyecto
+
+```
+Fase 1/Conciliacion Bancaria 2.0 fase 1/
+├── config/                    configuración de Django
+├── apps/
+│   ├── core/                  pantalla de inicio
+│   ├── usuarios/              login y cierre de sesión
+│   └── conciliacion/
+│       ├── logica.py          conciliación en dólares y sus Excel
+│       ├── logica_clp.py      conciliación en pesos contra el BORDERO y sus Excel
+│       ├── models.py          historial: Conciliacion y Reporte (Excel guardado)
+│       ├── registro.py        guarda cada conciliación en el historial
+│       ├── dolar.py           dólar observado (mindicador.cl)
+│       └── views.py           pantallas, historial y descargas
+├── templates/                 HTML
+├── static/
+│   ├── css/app.css            hoja de estilos única
+│   └── js/                    app.js (menú) y conciliacion.js (carga de archivos)
+├── manage.py
+└── requirements.txt
+```
+
 ---
 <a id="metodologia" name="metodologia"></a>
 ## 🔄 Metodología de Trabajo

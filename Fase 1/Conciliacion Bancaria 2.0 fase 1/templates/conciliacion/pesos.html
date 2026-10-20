@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block titulo %}Conciliación en pesos{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/conciliacion.js' %}?v={{ APP_VERSION }}" defer></script>
+{% endblock %}
+
+{% block contenido %}
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>Conciliación en pesos</h1>
+        <p class="encabezado__bajada">Cruza los abonos de Transbank (crédito, débito y prepago) con los pagos con tarjeta del BORDERO y verifica que cada abono llegó al banco. Cada análisis queda guardado en el <a href="{% url 'conciliacion:historial' %}">historial</a>.</p>
+    </div>
+</header>
+
+{% if errores %}
+<div class="aviso aviso--error aviso--separado" role="alert">
+    <i data-lucide="circle-alert" aria-hidden="true"></i>
+    <div>
+        <strong>No se pudo completar el análisis</strong>
+        {% for error in errores %}<p>{{ error }}</p>{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="flujo" data-analisis
+      data-alguno="credito,debito,prepago" data-alguno-texto="Carga al menos una liquidación de Transbank.">
+    {% csrf_token %}
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true">1</span>
+            <div>
+                <h2>Carga los archivos</h2>
+                <p class="tarjeta__bajada">Haz clic en cada casilla o arrastra el archivo encima.</p>
+            </div>
+        </div>
+
+        <div class="grupo">
+            <div class="grupo__cabeza">
+                <h3>Registro del hotel y banco</h3>
+                <p class="grupo__ayuda">El BORDERO es la base del cruce. La cartola es opcional y sirve para verificar que cada abono llegó a la cuenta.</p>
+            </div>
+            <div class="casillas casillas--dos">
+                {% include "conciliacion/_archivo.html" with campo="bordero" titulo="BORDERO" icono="book-open" acepta=".xls,.xlsx" ayuda="Cargos de débitos y créditos del FrontOffice" obligatorio=True %}
+                {% include "conciliacion/_archivo.html" with campo="cartola" titulo="Cartola bancaria" icono="landmark" acepta=".xls,.xlsx" ayuda="Movimientos de la cuenta en pesos" %}
+            </div>
+        </div>
+
+        <div class="grupo">
+            <div class="grupo__cabeza">
+                <h3>Liquidaciones de Transbank</h3>
+                <p class="grupo__ayuda">Reporte «Abonos por día» de cada medio de pago. Carga al menos uno.</p>
+            </div>
+            <div class="casillas">
+                {% include "conciliacion/_archivo.html" with campo="credito" titulo="Crédito" icono="credit-card" acepta=".xls,.xlsx" ayuda="Abonos por día, medio de pago Crédito" %}
+                {% include "conciliacion/_archivo.html" with campo="debito" titulo="Débito" icono="credit-card" acepta=".xls,.xlsx" ayuda="Abonos por día, medio de pago Débito" %}
+                {% include "conciliacion/_archivo.html" with campo="prepago" titulo="Prepago" icono="credit-card" acepta=".xls,.xlsx" ayuda="Abonos por día, medio de pago Prepago" %}
+            </div>
+        </div>
+    </article>
+
+    <article class="tarjeta analisis">
+        <div class="analisis__estado">
+            <div class="tarjeta__titulo">
+                <span class="paso" aria-hidden="true">2</span>
+                <div>
+                    <h2>Analiza</h2>
+                    <p class="tarjeta__bajada"><span data-contador>0</span> de <span data-total>5</span> archivos cargados</p>
+                </div>
+            </div>
+            <ul class="pastillas" aria-label="Archivos cargados">
+                <li class="pastilla" data-pastilla="bordero"><span class="pastilla__punto" aria-hidden="true"></span>BORDERO</li>
+                <li class="pastilla" data-pastilla="credito"><span class="pastilla__punto" aria-hidden="true"></span>Crédito</li>
+                <li class="pastilla" data-pastilla="debito"><span class="pastilla__punto" aria-hidden="true"></span>Débito</li>
+                <li class="pastilla" data-pastilla="prepago"><span class="pastilla__punto" aria-hidden="true"></span>Prepago</li>
+                <li class="pastilla" data-pastilla="cartola"><span class="pastilla__punto" aria-hidden="true"></span>Cartola</li>
+            </ul>
+        </div>
+
+        <div class="analisis__accion">
+            <p class="analisis__nota" data-nota aria-live="polite"></p>
+            <button type="submit" class="boton boton--principal boton--grande boton--ancho" data-analizar>
+                <i data-lucide="play" aria-hidden="true"></i>
+                <span data-analizar-texto>Analizar archivos</span>
+            </button>
+            <p class="analisis__pie">Puede tardar unos segundos si los archivos son grandes.</p>
+        </div>
+    </article>
+</form>
+{% endblock %}

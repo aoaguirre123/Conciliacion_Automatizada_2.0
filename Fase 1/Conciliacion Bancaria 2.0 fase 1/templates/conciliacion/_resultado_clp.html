@@ -1,0 +1,160 @@
+<section class="resultados" aria-label="Resultado de la conciliación">
+    <div class="cuadratura{% if not resumen.cuadrado %} cuadratura--descuadrada{% endif %}">
+        <span class="cuadratura__icono">
+            <i data-lucide="{% if resumen.cuadrado %}circle-check{% else %}triangle-alert{% endif %}" aria-hidden="true"></i>
+        </span>
+        <div>
+            <p class="cuadratura__estado">
+                {% if resumen.cuadrado %}Cuadrado: las ventas de Transbank están en el BORDERO{% else %}Hay montos por revisar entre Transbank y el BORDERO{% endif %}
+            </p>
+            <p class="cuadratura__monto num">$ {{ resumen.por_revisar|floatformat:"0g" }}</p>
+            <p class="cuadratura__detalle">Monto por revisar: diferencias de monto más ventas sin registro en el BORDERO del {{ resumen.periodo_bordero }}.</p>
+        </div>
+    </div>
+
+    {% if resumen.banco_cargado %}
+        {% if resumen.abonos_faltantes %}
+        <div class="aviso aviso--alerta" role="status">
+            <i data-lucide="triangle-alert" aria-hidden="true"></i>
+            <div>
+                <strong>Abono no encontrado en el banco</strong>
+                <p>No aparece en la cartola el abono de: {{ resumen.abonos_faltantes|join:", " }}.</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="aviso aviso--exito" role="status">
+            <i data-lucide="landmark" aria-hidden="true"></i>
+            <div>
+                <strong>Abonos encontrados en el banco</strong>
+                <p>El total abonado por Transbank en cada medio de pago aparece en la cartola bancaria.</p>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+
+    {% if resumen.fuera_periodo %}
+    <div class="aviso aviso--info" role="status">
+        <i data-lucide="calendar-range" aria-hidden="true"></i>
+        <div>
+            <strong>{{ resumen.fuera_periodo }} venta{{ resumen.fuera_periodo|pluralize }} fuera del período del BORDERO</strong>
+            <p>Son de fechas que el BORDERO cargado no cubre ({{ resumen.periodo_bordero }}), así que no se pudieron cruzar. No se suman al monto por revisar; están en la descarga «Conciliación completa».</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="indicadores indicadores--cuatro">
+        <div class="indicador">
+            <span class="indicador__valor">{{ resumen.conciliadas }}</span>
+            <span class="indicador__texto">Ventas conciliadas{% if resumen.con_nota %} ({{ resumen.con_nota }} con observación){% endif %}</span>
+        </div>
+        <div class="indicador{% if resumen.diferencias %} indicador--atencion{% endif %}">
+            <span class="indicador__valor">{{ resumen.diferencias }}</span>
+            <span class="indicador__texto">Con diferencia de monto</span>
+        </div>
+        <div class="indicador{% if resumen.sin_registro %} indicador--atencion{% endif %}">
+            <span class="indicador__valor">{{ resumen.sin_registro }}</span>
+            <span class="indicador__texto">Sin registro en el BORDERO</span>
+        </div>
+        <div class="indicador">
+            <span class="indicador__valor">{{ resumen.bordero_pendiente }}</span>
+            <span class="indicador__texto">Pagos del BORDERO sin abono en estos archivos</span>
+        </div>
+    </div>
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza">
+            <h2>Abonos de Transbank por medio de pago</h2>
+            <p class="tarjeta__bajada">Lo que Transbank liquidó, lo que se encontró en el BORDERO y si el abono llegó al banco.</p>
+        </div>
+        <div class="tabla-marco">
+            <table class="tabla tabla--ancha">
+                <thead>
+                    <tr>
+                        <th scope="col">Medio</th>
+                        <th scope="col">Fecha abono</th>
+                        <th scope="col" class="monto">Ventas</th>
+                        <th scope="col" class="monto">Comisión + IVA</th>
+                        <th scope="col" class="monto">Total abono</th>
+                        <th scope="col" class="monto">En BORDERO</th>
+                        <th scope="col" class="monto">Por revisar</th>
+                        <th scope="col">Banco</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in medios %}
+                    <tr>
+                        <th scope="row">{{ m.medio }} <span class="tabla__sub">{{ m.ventas }} venta{{ m.ventas|pluralize }}</span></th>
+                        <td>{{ m.fecha_abono|default:"—" }}</td>
+                        <td class="monto">{{ m.total_ventas|floatformat:"0g" }}</td>
+                        <td class="monto">{{ m.comision|floatformat:"0g" }}</td>
+                        <td class="monto">{{ m.total_abono|floatformat:"0g" }}</td>
+                        <td class="monto">{{ m.conciliado|floatformat:"0g" }}</td>
+                        <td class="monto">
+                            {% if m.por_revisar %}<span class="diferencia diferencia--error"><i data-lucide="triangle-alert" aria-hidden="true"></i>{{ m.por_revisar|floatformat:"0g" }}</span>{% else %}<span class="diferencia diferencia--cero">0</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if m.banco == "encontrado" %}<span class="etiqueta etiqueta--ok">Recibido</span><span class="tabla__sub">{{ m.fecha_banco }}</span>
+                            {% elif m.banco == "no_encontrado" %}<span class="etiqueta etiqueta--error">No encontrado</span>
+                            {% else %}<span class="etiqueta">Sin cartola</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="fila-total">
+                        <th scope="row">Total</th>
+                        <td></td>
+                        <td class="monto">{{ total_medios.total_ventas|floatformat:"0g" }}</td>
+                        <td class="monto">{{ total_medios.comision|floatformat:"0g" }}</td>
+                        <td class="monto">{{ total_medios.total_abono|floatformat:"0g" }}</td>
+                        <td class="monto">{{ total_medios.conciliado|floatformat:"0g" }}</td>
+                        <td class="monto">{{ total_medios.por_revisar|floatformat:"0g" }}</td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza">
+            <h2>Ventas por revisar</h2>
+            <p class="tarjeta__bajada">Diferencias de monto, ventas sin registro en el BORDERO y cruces con observación. Las diferencias de hasta $10 se consideran redondeo.</p>
+        </div>
+        {% if observaciones %}
+        <div class="tabla-marco">
+            <table class="tabla tabla--ancha">
+                <thead>
+                    <tr>
+                        <th scope="col">Estado</th>
+                        <th scope="col">Medio</th>
+                        <th scope="col">Fecha</th>
+                        <th scope="col">Local</th>
+                        <th scope="col">Autorización</th>
+                        <th scope="col" class="monto">Transbank</th>
+                        <th scope="col" class="monto">BORDERO</th>
+                        <th scope="col" class="monto">Diferencia</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for o in observaciones %}
+                    <tr>
+                        <td>
+                            <span class="etiqueta {% if o.estado == 'conciliado' %}etiqueta--ok{% elif o.estado == 'diferencia' or o.estado == 'sin_registro' %}etiqueta--error{% endif %}">{{ o.estado_texto }}</span>
+                            {% if o.nota %}<span class="tabla__sub">{{ o.nota }}</span>{% endif %}
+                        </td>
+                        <td>{{ o.medio }}</td>
+                        <td class="num">{{ o.fecha }}</td>
+                        <td>{{ o.local|title }}</td>
+                        <td class="num">{{ o.autorizacion }}{% if o.documento_distinto %} <span class="tabla__sub">En BORDERO: {{ o.documento_bordero }}</span>{% endif %}</td>
+                        <td class="monto">{{ o.monto|floatformat:"0g" }}</td>
+                        <td class="monto">{% if o.monto_bordero is not None %}{{ o.monto_bordero|floatformat:"0g" }}{% else %}—{% endif %}</td>
+                        <td class="monto">{% if o.diferencia is None %}—{% elif o.estado == "diferencia" %}<span class="diferencia diferencia--error">{{ o.diferencia|floatformat:"0g" }}</span>{% else %}<span class="diferencia diferencia--cero">{{ o.diferencia|floatformat:"0g" }}</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="vacio">No hay ventas por revisar.</p>
+        {% endif %}
+    </article>
+</section>

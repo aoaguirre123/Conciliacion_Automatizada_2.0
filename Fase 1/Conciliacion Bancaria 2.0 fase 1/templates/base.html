@@ -1,35 +1,31 @@
-{% load static %}
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Plaza San Francisco - Conciliaciones{% endblock %}</title>
-
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
-    <link rel="stylesheet" href="{% static 'css/base.css' %}">
-    <link rel="stylesheet" href="{% static 'css/components.css' %}">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    {% block extra_css %}{% endblock %}
+    <title>{% block titulo %}Inicio{% endblock %} | Hotel Plaza San Francisco</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="{% static 'css/app.css' %}?v={{ APP_VERSION }}">
+    <script src="https://unpkg.com/lucide@latest" defer></script>
+    <script src="{% static 'js/app.js' %}?v={{ APP_VERSION }}" defer></script>
+    {% block scripts %}{% endblock %}
 </head>
-<body>
+<body class="{% block clase_body %}{% endblock %}">
+    {% block estructura %}
+    <a class="saltar" href="#contenido">Saltar al contenido</a>
+    {% include "partials/cabecera.html" %}
+    {% include "partials/menu.html" %}
+    <div class="velo" data-menu-velo hidden></div>
 
-    {% include 'components/navbar.html' %}
-    {% include 'components/sidebar.html' %}
-
-    <main class="main-content main-content--with-sidebar">
-        {% block content %}
-        {% endblock %}
+    <main id="contenido" class="contenido">
+        <div class="pagina">
+            {% block contenido %}{% endblock %}
+        </div>
     </main>
 
-    {% include 'components/footer.html' %}
-
-    {% block extra_js %}{% endblock %}
-    <script src="{% static 'js/sidebar.js' %}"></script>
-    <script>
-        if (window.lucide) {
-            window.lucide.createIcons({ attrs: { 'stroke-width': 1.8 } });
-        }
-    </script>
+    {% include "partials/pie.html" %}
+    {% endblock %}
 </body>
 </html>
