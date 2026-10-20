@@ -81,6 +81,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # Versión visible en el pie de página y usada para refrescar CSS/JS en el navegador.
 APP_VERSION = "3.1"
 
+# Identificación de tarjetas por BIN (HandyAPI). Opcional: sin clave se usa el cupo público,
+# más bajo. Cuenta gratuita en https://www.handyapi.com
+HANDYAPI_KEY = os.environ.get("HANDYAPI_KEY", "")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Archivos subidos grandes (cartolas) se procesan en disco temporal, no en memoria.

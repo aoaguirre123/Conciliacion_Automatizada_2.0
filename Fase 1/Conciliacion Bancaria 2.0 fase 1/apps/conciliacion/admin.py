@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Conciliacion, Reporte
+from .models import BinTarjeta, Conciliacion, Reporte
 
 
 class ReporteEnLinea(admin.TabularInline):
@@ -17,3 +17,10 @@ class ConciliacionAdmin(admin.ModelAdmin):
     list_filter = ("moneda", "cuadrado")
     readonly_fields = ("moneda", "creada", "usuario", "archivos", "cuadrado", "monto_por_revisar", "resultado")
     inlines = [ReporteEnLinea]
+
+
+@admin.register(BinTarjeta)
+class BinTarjetaAdmin(admin.ModelAdmin):
+    list_display = ("bin", "marca", "tipo", "banco", "pais", "nivel", "fuente", "consultado")
+    list_filter = ("marca", "tipo", "pais")
+    search_fields = ("bin", "banco")

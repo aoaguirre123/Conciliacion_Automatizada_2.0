@@ -54,3 +54,29 @@ class Reporte(models.Model):
 
     def get_absolute_url(self):
         return reverse("conciliacion:descargar", args=[self.conciliacion_id, self.clave])
+
+
+class BinTarjeta(models.Model):
+    """Datos de un BIN (6 primeros dígitos de la tarjeta), consultados una vez a la API."""
+
+    bin = models.CharField(max_length=6, primary_key=True)
+    marca = models.CharField(max_length=40)
+    tipo = models.CharField(max_length=20, blank=True, help_text="Crédito, Débito o Prepago.")
+    banco = models.CharField(max_length=120, blank=True)
+    pais = models.CharField(max_length=60, blank=True)
+    pais_codigo = models.CharField(max_length=2, blank=True)
+    nivel = models.CharField(max_length=40, blank=True, help_text="Classic, Gold, Platinum…")
+    fuente = models.CharField(max_length=20, default="handyapi")
+    consultado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["bin"]
+        verbose_name = "BIN de tarjeta"
+        verbose_name_plural = "BIN de tarjetas"
+
+    def __str__(self):
+        return f"{self.bin} {self.marca} {self.banco}".strip()
+
+    def como_dict(self):
+        return {"bin": self.bin, "marca": self.marca, "tipo": self.tipo, "banco": self.banco, "pais": self.pais,
+                "pais_codigo": self.pais_codigo, "nivel": self.nivel, "fuente": self.fuente}
