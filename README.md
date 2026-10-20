@@ -32,10 +32,9 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 - [Descripción y Alcance de la Solución](#descripcion-y-alcance)
 - [Stack Tecnológico](#stack-tecnologico) 
 - [Arquitectura del Sistema](#arquitectura)
-- [Estado Actual del Desarrollo (v3.1)](#estado-actual)
+- [Estado Actual del Desarrollo](#estado-actual)
 - [Puesta en Marcha](#puesta-en-marcha)
 - [Gestión de Usuarios](#usuarios)
-- [Actualización desde la Versión 3.0](#actualizacion)
 - [Estructura del Proyecto](#estructura)
 - [Metodología de Trabajo](#metodologia)
 ---
@@ -101,22 +100,20 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 * **Despliegue:** Flexible para integrarse tanto en un **Servidor Local (On-Premise)** como en entornos **Cloud**.
 ---
 <a id="estado-actual" name="estado-actual"></a>
-## 🚦 Estado Actual del Desarrollo (v3.1)
+## 🚦 Estado Actual del Desarrollo
 
-La versión vigente del sistema es **Conciliación bancaria v3.1**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Fase 1/Conciliacion Bancaria 2.0 fase 1/`.
+La versión vigente del sistema es **Conciliación bancaria**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Fase 1/Conciliacion Bancaria 2.0 fase 1/`.
 
 #### Módulos Disponibles
 * **Conciliación en Dólares (USD):** Cruce entre ERP, Transbank, cartolas de las marcas internacionales (**Amex, Diners, Visa y Mastercard**) y banco, utilizando el dólar observado obtenido desde **mindicador.cl**.
 * **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**) contra los pagos con tarjeta del **BORDERO**, con verificación del abono en la cartola bancaria.
 * **Historial:** Registro de todas las conciliaciones guardadas, con su resultado y los reportes Excel descargables.
 
-#### Tecnologías Utilizadas en esta Versión
+#### Tecnologías Utilizadas
 * **Framework:** Django 5.1+ (plantillas HTML, CSS y JavaScript)
 * **Base de Datos:** SQLite
 * **Procesamiento de Archivos:** Pandas, OpenPyXL y xlrd (cartolas `.xls` de Amex, Diners, Visa y Mastercard)
 * **Servicios Externos:** httpx para consultar el dólar observado en mindicador.cl
-
-> 💡 **Verificación de versión:** el pie de página del sistema muestra **Conciliación bancaria v3.1**.
 
 ---
 <a id="puesta-en-marcha" name="puesta-en-marcha"></a>
@@ -151,20 +148,6 @@ Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña
 * **Creación de usuarios:**
   * Desde la terminal con `python manage.py createsuperuser`.
   * Desde la opción **"Usuarios y permisos"** del menú (disponible solo para usuarios *staff*).
-
----
-<a id="actualizacion" name="actualizacion"></a>
-## 🔁 Actualización desde la Versión 3.0
-
-1. Detener el servidor.
-2. Actualizar el repositorio con `git pull` (o reemplazar la carpeta completa del proyecto por la nueva versión).
-3. Ejecutar una vez:
-
-```
-python manage.py migrate
-```
-
-Este paso crea las tablas del historial. Los usuarios existentes se mantienen.
 
 ---
 <a id="estructura" name="estructura"></a>
