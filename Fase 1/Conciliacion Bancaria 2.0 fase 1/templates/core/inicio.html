@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block titulo %}Inicio{% endblock %}
+
+{% block contenido %}
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>{{ saludo }}, {{ user.first_name|default:user.username }}</h1>
+        <p class="encabezado__bajada">{% now "l j \d\e F \d\e Y" %}</p>
+    </div>
+</header>
+
+<div class="inicio">
+    <div class="flujo">
+        <div class="accesos">
+            <a class="acceso" href="{% url 'conciliacion:dolares' %}">
+                <span class="acceso__icono"><i data-lucide="circle-dollar-sign" aria-hidden="true"></i></span>
+                <h2>Conciliación en dólares</h2>
+                <p class="acceso__texto">ERP, Transbank, cartolas de Amex, Diners, Visa y Mastercard, y banco.</p>
+                <span class="acceso__accion">Comenzar</span>
+            </a>
+            <a class="acceso" href="{% url 'conciliacion:pesos' %}">
+                <span class="acceso__icono"><i data-lucide="banknote" aria-hidden="true"></i></span>
+                <h2>Conciliación en pesos</h2>
+                <p class="acceso__texto">Abonos de Transbank (crédito, débito y prepago) contra el BORDERO y la cartola.</p>
+                <span class="acceso__accion">Comenzar</span>
+            </a>
+        </div>
+
+        <section class="tarjeta">
+            <div class="tarjeta__cabeza cabeza-con-accion">
+                <h2>Últimas conciliaciones</h2>
+                <a href="{% url 'conciliacion:historial' %}">Ver historial completo</a>
+            </div>
+            {% if ultimas %}
+            <ul class="lista-conciliaciones">
+                {% for c in ultimas %}
+                <li>
+                    <a href="{{ c.get_absolute_url }}">
+                        <span class="lista-conciliaciones__titulo">N° {{ c.pk }}, {{ c.get_moneda_display|lower }}</span>
+                        <span class="lista-conciliaciones__fecha">{{ c.creada|date:"d-m-Y H:i" }}{% if c.usuario %}, {{ c.usuario.get_full_name|default:c.usuario.username }}{% endif %}</span>
+                        {% if c.cuadrado %}<span class="etiqueta etiqueta--ok">Cuadrado</span>{% else %}<span class="etiqueta etiqueta--error">Por revisar</span>{% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="vacio">Aún no se ha hecho ninguna conciliación.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <aside class="tarjeta">
+        <h2>Dólar observado</h2>
+        {% if dolar_hoy %}
+            <p class="valor-dolar num">$ {{ dolar_hoy.valor|floatformat:"2g" }}</p>
+            <p class="fuente">Valor del {{ dolar_hoy.fecha }}. Fuente: mindicador.cl</p>
+        {% else %}
+            <p class="fuente">No se pudo obtener el valor en este momento.</p>
+        {% endif %}
+    </aside>
+</div>
+{% endblock %}

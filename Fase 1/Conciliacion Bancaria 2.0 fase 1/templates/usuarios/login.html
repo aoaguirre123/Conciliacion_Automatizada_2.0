@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block titulo %}Iniciar sesión{% endblock %}
+{% block clase_body %}pagina-login{% endblock %}
+
+{% block estructura %}
+<main class="login">
+    <section class="login__foto" style="background-image: url('{% static 'img/fondologin.jpg' %}');" aria-label="Fachada del Hotel Plaza San Francisco">
+        <div class="login__marca">
+            <img src="{% static 'img/logo.webp' %}" alt="Hotel Plaza San Francisco, Santiago de Chile">
+            <p>Sistema interno de conciliación bancaria: cruza el ERP con Transbank, las cartolas de tarjetas y el banco.</p>
+        </div>
+    </section>
+
+    <section class="login__panel">
+        <div class="login__caja">
+            <h1>Iniciar sesión</h1>
+            <p class="login__bajada">Ingresa con tu correo del hotel.</p>
+
+            <form method="post" class="login__formulario">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next }}">
+
+                {% if mensaje %}
+                <div class="aviso aviso--error" role="alert">
+                    <i data-lucide="circle-alert" aria-hidden="true"></i>
+                    <p>{{ mensaje }}</p>
+                </div>
+                {% endif %}
+
+                <div class="campo">
+                    <label class="campo__etiqueta" for="email">Correo electrónico</label>
+                    <input class="entrada" id="email" name="email" type="email" autocomplete="email"
+                           value="{{ email|default:'' }}" required autofocus>
+                </div>
+
+                <div class="campo">
+                    <label class="campo__etiqueta" for="password">Contraseña</label>
+                    <div class="clave">
+                        <input class="entrada" id="password" name="password" type="password" autocomplete="current-password" required>
+                        <button type="button" class="clave__ver" data-ver-clave aria-controls="password" aria-pressed="false">Mostrar</button>
+                    </div>
+                </div>
+
+                <label class="recordar">
+                    <input type="checkbox" name="recordarme">
+                    Mantener la sesión iniciada en este equipo
+                </label>
+
+                <button type="submit" class="boton boton--principal boton--grande boton--ancho">Ingresar</button>
+            </form>
+
+            <p class="login__ayuda">¿No puedes ingresar? Pide al administrador del sistema que revise tu cuenta.</p>
+        </div>
+    </section>
+</main>
+
+<script>
+    (function () {
+        var boton = document.querySelector('[data-ver-clave]');
+        var clave = document.getElementById('password');
+        boton.addEventListener('click', function () {
+            var mostrar = clave.type === 'password';
+            clave.type = mostrar ? 'text' : 'password';
+            boton.textContent = mostrar ? 'Ocultar' : 'Mostrar';
+            boton.setAttribute('aria-pressed', String(mostrar));
+        });
+    })();
+</script>
+{% endblock %}

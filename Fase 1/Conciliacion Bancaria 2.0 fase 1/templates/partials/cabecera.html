@@ -1,0 +1,30 @@
+{% load static %}
+<header class="cabecera">
+    <button class="cabecera__menu" type="button" data-menu-abrir aria-controls="menu" aria-expanded="false" aria-label="Abrir menú">
+        <i data-lucide="menu" aria-hidden="true"></i>
+    </button>
+
+    <a class="cabecera__marca" href="{% url 'core:inicio' %}">
+        <img src="{% static 'img/logo.webp' %}" alt="Hotel Plaza San Francisco, ir al inicio">
+    </a>
+    <span class="cabecera__sistema">Conciliación bancaria</span>
+
+    {% if user.is_authenticated %}
+    <div class="cabecera__sesion">
+        <div class="usuario">
+            <span class="usuario__inicial" aria-hidden="true">{{ user.first_name|default:user.username|slice:":1"|upper }}</span>
+            <span class="usuario__datos">
+                <span class="usuario__nombre">{{ user.get_full_name|default:user.username }}</span>
+                {% if user.email %}<span class="usuario__correo">{{ user.email }}</span>{% endif %}
+            </span>
+        </div>
+        <form action="{% url 'usuarios:logout' %}" method="post">
+            {% csrf_token %}
+            <button type="submit" class="boton boton--claro" aria-label="Cerrar sesión">
+                <i data-lucide="log-out" aria-hidden="true"></i>
+                <span class="boton__texto-opcional" aria-hidden="true">Cerrar sesión</span>
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</header>

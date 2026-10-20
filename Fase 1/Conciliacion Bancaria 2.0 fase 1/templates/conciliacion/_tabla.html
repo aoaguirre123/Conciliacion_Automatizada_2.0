@@ -1,0 +1,28 @@
+<div class="tabla-marco">
+    <table class="tabla">
+        <thead>
+            <tr>
+                <th scope="col">Tarjeta</th>
+                <th scope="col" class="monto">Ventas CM</th>
+                <th scope="col" class="monto">Ventas TBK</th>
+                <th scope="col" class="monto">Diferencia</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fila in filas %}
+            <tr{% if fila.es_total %} class="fila-total"{% endif %}>
+                <th scope="row">{{ fila.cuenta }}</th>
+                <td class="monto">{{ fila.ventas_cm|floatformat:formato }}</td>
+                <td class="monto">{{ fila.ventas_tbk|floatformat:formato }}</td>
+                <td class="monto">
+                    {% if fila.diferencia %}
+                    <span class="diferencia diferencia--error"><i data-lucide="triangle-alert" aria-hidden="true"></i>{{ fila.diferencia|floatformat:formato }}</span>
+                    {% else %}
+                    <span class="diferencia diferencia--cero">{{ 0|floatformat:formato }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,38 @@
+{% with actual=request.resolver_match.view_name %}
+<aside class="menu" id="menu" aria-label="Menú principal">
+    <nav>
+        <div class="menu__grupo">
+            <a class="menu__enlace{% if actual == 'core:inicio' %} menu__enlace--activo{% endif %}" href="{% url 'core:inicio' %}"{% if actual == 'core:inicio' %} aria-current="page"{% endif %}>
+                <i data-lucide="house" aria-hidden="true"></i>
+                Inicio
+            </a>
+        </div>
+
+        <div class="menu__grupo">
+            <span class="menu__titulo">Conciliación</span>
+            <a class="menu__enlace{% if actual == 'conciliacion:dolares' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:dolares' %}"{% if actual == 'conciliacion:dolares' %} aria-current="page"{% endif %}>
+                <i data-lucide="circle-dollar-sign" aria-hidden="true"></i>
+                En dólares
+            </a>
+            <a class="menu__enlace{% if actual == 'conciliacion:pesos' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:pesos' %}"{% if actual == 'conciliacion:pesos' %} aria-current="page"{% endif %}>
+                <i data-lucide="banknote" aria-hidden="true"></i>
+                En pesos
+            </a>
+            <a class="menu__enlace{% if actual == 'conciliacion:historial' or actual == 'conciliacion:detalle' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:historial' %}"{% if actual == 'conciliacion:historial' %} aria-current="page"{% endif %}>
+                <i data-lucide="history" aria-hidden="true"></i>
+                Historial
+            </a>
+        </div>
+
+        {% if user.is_staff %}
+        <div class="menu__grupo">
+            <span class="menu__titulo">Administración</span>
+            <a class="menu__enlace" href="{% url 'admin:index' %}">
+                <i data-lucide="settings" aria-hidden="true"></i>
+                Usuarios y permisos
+            </a>
+        </div>
+        {% endif %}
+    </nav>
+</aside>
+{% endwith %}

@@ -1,0 +1,69 @@
+<section class="resultados" aria-label="Resultado de la conciliación">
+
+    <div class="cuadratura{% if not resumen.cuadrado %} cuadratura--descuadrada{% endif %}">
+        <span class="cuadratura__icono">
+            <i data-lucide="{% if resumen.cuadrado %}circle-check{% else %}triangle-alert{% endif %}" aria-hidden="true"></i>
+        </span>
+        <div>
+            <p class="cuadratura__estado">
+                {% if resumen.cuadrado %}Cuadrado: Transbank coincide con las cartolas de tarjetas{% else %}Hay diferencias entre Transbank y las cartolas de tarjetas{% endif %}
+            </p>
+            <p class="cuadratura__monto num">US$ {{ resumen.diferencia_total|floatformat:"2g" }}</p>
+            <p class="cuadratura__detalle">Diferencia total en dólares (Ventas TBK menos Ventas CM).</p>
+        </div>
+    </div>
+
+    {% if ws == 1 %}
+    <div class="aviso aviso--exito" role="status">
+        <i data-lucide="landmark" aria-hidden="true"></i>
+        <div>
+            <strong>Abono encontrado en el banco</strong>
+            <p>El abono calculado por Transbank, US$ {{ abonado|floatformat:"2g" }}, aparece en la cartola bancaria.</p>
+        </div>
+    </div>
+    {% elif ws == 0 %}
+    <div class="aviso aviso--alerta" role="status">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <div>
+            <strong>Abono no encontrado en el banco</strong>
+            {% if abono_calculado %}
+            <p>Transbank informa un abono calculado de US$ {{ abono_calculado|floatformat:"2g" }}, pero ese monto no aparece en la cartola bancaria.</p>
+            {% else %}
+            <p>El archivo de Transbank no tiene la línea «Abono Calculado (=):», así que no hubo monto que buscar en el banco.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="indicadores">
+        <div class="indicador">
+            <span class="indicador__valor">{{ resumen.ubicadas }}</span>
+            <span class="indicador__texto">Transacciones de Transbank ubicadas en el ERP</span>
+        </div>
+        <div class="indicador{% if resumen.no_ubicadas %} indicador--atencion{% endif %}">
+            <span class="indicador__valor">{{ resumen.no_ubicadas }}</span>
+            <span class="indicador__texto">Transacciones de Transbank sin registro en el ERP</span>
+        </div>
+        <div class="indicador{% if resumen.erp_sin_tarjeta %} indicador--atencion{% endif %}">
+            <span class="indicador__valor">{{ resumen.erp_sin_tarjeta }}</span>
+            <span class="indicador__texto">Documentos del ERP sin respaldo en las cartolas</span>
+        </div>
+    </div>
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza">
+            <h2>Transbank vs. cartolas de tarjetas (US$)</h2>
+            <p class="tarjeta__bajada">Transacciones de Transbank que se ubicaron en el ERP, comparadas con la cartola de cada tarjeta.</p>
+        </div>
+        {% include "conciliacion/_tabla.html" with filas=data_dolar formato="2g" %}
+    </article>
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza">
+            <h2>ERP vs. Transbank</h2>
+            <p class="tarjeta__bajada">Montos del ERP ubicados en las cartolas, frente a los montos del ERP que Transbank encontró por código de autorización.</p>
+        </div>
+        {% include "conciliacion/_tabla.html" with filas=data formato="g" %}
+    </article>
+
+</section>

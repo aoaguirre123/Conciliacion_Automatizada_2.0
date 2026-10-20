@@ -1,0 +1,4 @@
+entorno/
+__pycache__/
+*.pyc
+staticfiles/
