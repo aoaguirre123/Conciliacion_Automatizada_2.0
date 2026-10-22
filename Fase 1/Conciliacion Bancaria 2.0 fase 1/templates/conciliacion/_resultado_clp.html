@@ -114,6 +114,63 @@
         </div>
     </article>
 
+    {% if tarjetas %}
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza">
+            <h2>Tarjetas identificadas</h2>
+            <p class="tarjeta__bajada">
+                Marca, banco y país de cada tarjeta según sus 6 primeros dígitos (BIN).
+                Banco identificado en {{ tarjetas.con_banco }} de {{ tarjetas.total }} venta{{ tarjetas.total|pluralize }}{% if tarjetas.extranjeras %}; {{ tarjetas.extranjeras }} con tarjeta extranjera por $ {{ tarjetas.monto_extranjeras|floatformat:"0g" }}{% endif %}.
+            </p>
+        </div>
+        <div class="tablas-apiladas">
+            <div class="tabla-marco">
+                <table class="tabla">
+                    <thead>
+                        <tr>
+                            <th scope="col">Marca</th>
+                            <th scope="col" class="monto">Ventas</th>
+                            <th scope="col" class="monto">Monto</th>
+                            <th scope="col" class="monto">Por revisar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in tarjetas.por_marca %}
+                        <tr>
+                            <th scope="row">{{ g.nombre }}</th>
+                            <td class="monto">{{ g.ventas }}</td>
+                            <td class="monto">{{ g.monto|floatformat:"0g" }}</td>
+                            <td class="monto">{% if g.por_revisar %}<span class="diferencia diferencia--error">{{ g.por_revisar|floatformat:"0g" }}</span>{% else %}<span class="diferencia diferencia--cero">0</span>{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="tabla-marco">
+                <table class="tabla">
+                    <thead>
+                        <tr>
+                            <th scope="col">Banco emisor</th>
+                            <th scope="col" class="monto">Ventas</th>
+                            <th scope="col" class="monto">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in tarjetas.por_emisor|slice:":10" %}
+                        <tr>
+                            <th scope="row">{{ g.nombre }}</th>
+                            <td class="monto">{{ g.ventas }}</td>
+                            <td class="monto">{{ g.monto|floatformat:"0g" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <p class="fuente">{% if tarjetas.por_emisor|length > 10 %}Se muestran los 10 bancos con más monto; el detalle completo está en la descarga «Conciliación completa». {% endif %}Datos de BIN: bin-list-data (CC-BY-4.0).</p>
+    </article>
+    {% endif %}
+
     <article class="tarjeta">
         <div class="tarjeta__cabeza">
             <h2>Ventas por revisar</h2>
@@ -129,6 +186,7 @@
                         <th scope="col">Fecha</th>
                         <th scope="col">Local</th>
                         <th scope="col">Autorización</th>
+                        <th scope="col">Tarjeta</th>
                         <th scope="col" class="monto">Transbank</th>
                         <th scope="col" class="monto">BORDERO</th>
                         <th scope="col" class="monto">Diferencia</th>
@@ -145,6 +203,7 @@
                         <td class="num">{{ o.fecha }}</td>
                         <td>{{ o.local|title }}</td>
                         <td class="num">{{ o.autorizacion }}{% if o.documento_distinto %} <span class="tabla__sub">En BORDERO: {{ o.documento_bordero }}</span>{% endif %}</td>
+                        <td>{{ o.marca|default:"—" }}{% if o.banco %}<span class="tabla__sub">{{ o.banco }}{% if o.pais %}, {{ o.pais }}{% endif %}</span>{% endif %}</td>
                         <td class="monto">{{ o.monto|floatformat:"0g" }}</td>
                         <td class="monto">{% if o.monto_bordero is not None %}{{ o.monto_bordero|floatformat:"0g" }}{% else %}—{% endif %}</td>
                         <td class="monto">{% if o.diferencia is None %}—{% elif o.estado == "diferencia" %}<span class="diferencia diferencia--error">{{ o.diferencia|floatformat:"0g" }}</span>{% else %}<span class="diferencia diferencia--cero">{{ o.diferencia|floatformat:"0g" }}</span>{% endif %}</td>

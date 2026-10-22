@@ -108,12 +108,14 @@ La versión vigente del sistema es **Conciliación bancaria**, desarrollada como
 * **Conciliación en Dólares (USD):** Cruce entre ERP, Transbank, cartolas de las marcas internacionales (**Amex, Diners, Visa y Mastercard**) y banco, utilizando el dólar observado obtenido desde **mindicador.cl**.
 * **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**) contra los pagos con tarjeta del **BORDERO**, con verificación del abono en la cartola bancaria.
 * **Historial:** Registro de todas las conciliaciones guardadas, con su resultado y los reportes Excel descargables.
+* **Identificación de Tarjetas:** En la conciliación en pesos, cada venta se identifica por los **6 primeros dígitos (BIN)** de la tarjeta: **marca, tipo (crédito, débito o prepago), banco emisor y país**. Se muestra en el resultado y en los Excel, sin depender de internet.
 
 #### Tecnologías Utilizadas
 * **Framework:** Django 5.1+ (plantillas HTML, CSS y JavaScript)
 * **Base de Datos:** SQLite
 * **Procesamiento de Archivos:** Pandas, OpenPyXL y xlrd (cartolas `.xls` de Amex, Diners, Visa y Mastercard)
 * **Servicios Externos:** httpx para consultar el dólar observado en mindicador.cl
+* **Datos de BIN:** [bin-list-data](https://github.com/venelinkochev/bin-list-data) (licencia **CC-BY-4.0**), incluida en el proyecto y cargada en la base de datos con `migrate`
 
 ---
 <a id="puesta-en-marcha" name="puesta-en-marcha"></a>
@@ -136,6 +138,8 @@ python manage.py runserver
 ```
 
 Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña del usuario.
+
+> 💳 **Base de BIN:** la primera vez, `migrate` también carga la base de tarjetas (~375.000 BIN), por lo que demora un poco más.
 
 > 🍎 **macOS / Linux:** activar el entorno con `source entorno/bin/activate`.
 
@@ -162,9 +166,11 @@ Fase 1/Conciliacion Bancaria 2.0 fase 1/
 │   └── conciliacion/
 │       ├── logica.py          conciliación en dólares y sus Excel
 │       ├── logica_clp.py      conciliación en pesos contra el BORDERO y sus Excel
-│       ├── models.py          historial: Conciliacion y Reporte (Excel guardado)
+│       ├── models.py          historial (Conciliacion, Reporte) y BIN de tarjetas (BinTarjeta)
 │       ├── registro.py        guarda cada conciliación en el historial
 │       ├── dolar.py           dólar observado (mindicador.cl)
+│       ├── bines.py           identificación de tarjetas por BIN
+│       ├── datos/             bines.csv.gz (base de BIN) y preparar_bines.py (para actualizarla)
 │       └── views.py           pantallas, historial y descargas
 ├── templates/                 HTML
 ├── static/

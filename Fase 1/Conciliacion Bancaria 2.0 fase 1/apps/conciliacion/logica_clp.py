@@ -26,6 +26,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from .bines import SIN_IDENTIFICAR, agrupar, bin_de, identificar_local
+
 TOLERANCIA = 10  # pesos: diferencias de redondeo entre el FrontOffice y Transbank
 
 # Campo del formulario -> (medio de pago, nombre visible)
@@ -268,6 +270,7 @@ def leer_transbank(archivo, medio):
             "abono": _numero(raw.iat[i, c_abono]) if c_abono is not None else 0.0,
             "cuota": _texto(raw.iat[i, c_cuota]) if c_cuota is not None else "",
             "tarjeta": _texto(raw.iat[i, c_tarjeta]) if c_tarjeta is not None else "",
+            "bin": bin_de(_texto(raw.iat[i, c_tarjeta])) if c_tarjeta is not None else None,
             "autorizacion": _texto(raw.iat[i, c_codigo]),
             "codigo": _codigo(raw.iat[i, c_codigo]),
             "codigo_flex": _codigo_flexible(raw.iat[i, c_codigo]),
@@ -388,13 +391,46 @@ def _por_revisar(v):
     return 0
 
 
-def procesar(archivos):
-    """Ejecuta la conciliación en pesos. Devuelve (resultado para la pantalla, reportes Excel)."""
+def _identificar_tarjetas(ventas, identificar):
+    """Agrega a cada venta la marca, el tipo, el banco y el país de su tarjeta (por BIN)."""
+    datos_bin = identificar({v["bin"] for v in ventas if v["bin"]})
+    for v in ventas:
+        datos = datos_bin.get(v["bin"]) or {}
+        banco, pais = datos.get("banco", ""), datos.get("pais", "")
+        v.update(
+            marca=datos.get("marca") or SIN_IDENTIFICAR,
+            tipo_tarjeta=datos.get("tipo", ""),
+            banco=banco,
+            pais=pais,
+            pais_codigo=datos.get("pais_codigo", ""),
+            emisor=f"{banco} ({pais})" if banco and pais else banco,
+        )
+
+
+def _resumen_tarjetas(ventas):
+    """Ventas agrupadas por marca y por banco emisor, para la pantalla y el Excel."""
+    extranjeras = [v for v in ventas if v["pais_codigo"] and v["pais_codigo"] != "CL"]
+    return {
+        "por_marca": agrupar(ventas, "marca", _por_revisar),
+        "por_emisor": agrupar(ventas, "emisor", _por_revisar),
+        "con_banco": sum(1 for v in ventas if v["banco"]),
+        "total": len(ventas),
+        "extranjeras": len(extranjeras),
+        "monto_extranjeras": sum(v["monto"] for v in extranjeras),
+    }
+
+
+def procesar(archivos, identificar=identificar_local):
+    """Ejecuta la conciliación en pesos. Devuelve (resultado para la pantalla, reportes Excel).
+
+    `identificar` recibe un conjunto de BIN y devuelve {bin: datos}; por defecto solo la marca.
+    """
     pagos, periodo = leer_bordero(archivos["bordero"])
     liquidaciones = [leer_transbank(archivos[campo], medio) for campo, medio in ARCHIVOS_TBK.items() if archivos.get(campo)]
     abonos_banco = leer_cartola(archivos["cartola"]) if archivos.get("cartola") else None
 
     ventas = [v for liq in liquidaciones for v in liq["ventas"]]
+    _identificar_tarjetas(ventas, identificar)
     pendientes_bordero = _cruzar(ventas, pagos, periodo)
 
     # Abono de cada liquidación en el banco (mismo monto; se prefiere la misma fecha).
@@ -460,6 +496,7 @@ def procesar(archivos):
         "medios": medios,
         "total_medios": total,
         "observaciones": observaciones,
+        "tarjetas": _resumen_tarjetas(ventas),
         "archivos_usados": [NOMBRES_ARCHIVO[c] for c in NOMBRES_ARCHIVO if archivos.get(c)],
     }
     reportes = [
@@ -480,6 +517,10 @@ def _fila_venta(v):
         "local": v["local"],
         "autorizacion": v["autorizacion"],
         "tarjeta": v["tarjeta"],
+        "marca": v["marca"],
+        "tipo_tarjeta": v["tipo_tarjeta"],
+        "banco": v["banco"],
+        "pais": v["pais"],
         "cuota": v["cuota"],
         "monto": v["monto"],
         "monto_bordero": v["monto_bordero"],
@@ -504,7 +545,8 @@ MONEDA = '"$"#,##0;-"$"#,##0;"-"'
 
 COLUMNAS_VENTAS = [
     ("Medio", "medio", 12), ("Fecha venta", "fecha", 12), ("Local", "local", 28), ("Cód. autorización", "autorizacion", 16),
-    ("N° tarjeta", "tarjeta", 20), ("Cuota", "cuota", 8), ("Monto Transbank", "monto", 16), ("Monto BORDERO", "monto_bordero", 16),
+    ("N° tarjeta", "tarjeta", 20), ("Marca", "marca", 13), ("Tipo tarjeta", "tipo_tarjeta", 12),
+    ("Banco emisor", "banco", 30), ("País emisor", "pais", 16), ("Cuota", "cuota", 8), ("Monto Transbank", "monto", 16), ("Monto BORDERO", "monto_bordero", 16),
     ("Diferencia", "diferencia", 13), ("Documento BORDERO", "documento_bordero", 18), ("Cód. BORDERO", "cod_bordero", 12),
     ("Estado", "estado_texto", 28), ("Observación", "nota", 40),
 ]
@@ -587,6 +629,15 @@ def _excel_completo(resultado, ventas, pendientes, resumen):
 
     ws2 = wb.create_sheet("Transbank vs BORDERO")
     _hoja_tabla(ws2, "Todas las ventas de Transbank", COLUMNAS_VENTAS, [_fila_venta(v) for v in ventas])
+
+    tarjetas = resultado["tarjetas"]
+    columnas_grupo = [("N° ventas", "ventas", 11), ("Monto ventas", "monto", 16), ("Por revisar", "por_revisar", 14)]
+    _hoja_tabla(wb.create_sheet("Por marca"), "Ventas de Transbank por marca de tarjeta",
+                [("Marca", "nombre", 18)] + columnas_grupo, tarjetas["por_marca"],
+                "Marca identificada por los 6 primeros dígitos (BIN) de la tarjeta.")
+    _hoja_tabla(wb.create_sheet("Por banco emisor"), "Ventas de Transbank por banco emisor",
+                [("Banco emisor (país)", "nombre", 48)] + columnas_grupo, tarjetas["por_emisor"],
+                f"Banco identificado en {tarjetas['con_banco']} de {tarjetas['total']} ventas. Fuente: bin-list-data (CC-BY-4.0).")
 
     ws3 = wb.create_sheet("BORDERO sin abono")
     filas_b = [{**p, "fecha": p["fecha"].strftime("%d-%m-%Y") if p["fecha"] else ""} for p in pendientes]

@@ -47,6 +47,13 @@ Eso crea las tablas del historial. Tus usuarios se mantienen.
   tarjeta del BORDERO, y verificación del abono en la cartola.
 - **Historial**: todas las conciliaciones guardadas, con su resultado y sus Excel.
 
+En pesos, cada venta se identifica por el BIN de la tarjeta (6 primeros dígitos): marca,
+tipo, banco emisor y país. Los datos vienen de `apps/conciliacion/datos/bines.csv.gz`
+(fuente: https://github.com/venelinkochev/bin-list-data, licencia CC-BY-4.0) y se cargan
+en la base con `python manage.py migrate`; la primera vez demora un poco más.
+Para actualizar la base: `python apps/conciliacion/datos/preparar_bines.py bin-list-data.csv`
+y una migración nueva que la vuelva a cargar.
+
 ## Estructura
 
 ```
@@ -56,9 +63,11 @@ apps/usuarios/          login y cierre de sesión
 apps/conciliacion/
     logica.py           conciliación en dólares y sus Excel
     logica_clp.py       conciliación en pesos contra el BORDERO y sus Excel
-    models.py           historial: Conciliacion y Reporte (Excel guardado)
+    models.py           historial (Conciliacion, Reporte) y BIN de tarjetas (BinTarjeta)
     registro.py         guarda cada conciliación en el historial
     dolar.py            dólar observado (mindicador.cl)
+    bines.py            identificación de tarjetas por BIN
+    datos/              bines.csv.gz (base de BIN) y preparar_bines.py
     views.py            pantallas, historial y descargas
 templates/              HTML
 static/css/app.css      única hoja de estilos

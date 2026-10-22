@@ -6,7 +6,7 @@ from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
-from . import logica, logica_clp, registro
+from . import bines, logica, logica_clp, registro
 from .dolar import obtener_serie_dolar
 from .models import Conciliacion, Reporte
 
@@ -69,7 +69,7 @@ def pesos(request):
         errores = _validar_clp(archivos)
         if not errores:
             try:
-                resultado, reportes = logica_clp.procesar(archivos)
+                resultado, reportes = logica_clp.procesar(archivos, identificar=bines.identificar)
             except logica_clp.ArchivoInvalido as exc:
                 errores = [str(exc)]
             except Exception as exc:  # se muestra en pantalla y queda en el log

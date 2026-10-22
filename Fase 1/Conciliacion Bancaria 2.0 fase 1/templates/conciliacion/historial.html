@@ -41,7 +41,7 @@
                         {% if c.cuadrado %}<span class="etiqueta etiqueta--ok">Cuadrado</span>
                         {% else %}<span class="etiqueta etiqueta--error">Por revisar {{ c.simbolo }} {{ c.monto_por_revisar|floatformat:"-2g" }}</span>{% endif %}
                     </td>
-                    <td>{{ c.usuario.get_full_name|default:c.usuario.username|default:"—" }}</td>
+                    <td>{% if c.usuario %}{{ c.usuario.get_full_name|default:c.usuario.username }}{% else %}—{% endif %}</td>
                     <td>
                         <div class="iconos-descarga">
                             {% for r in c.reportes.all %}
