@@ -1690,3 +1690,13 @@ input {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* Tarjetas identificadas por BIN ------------------------------------------------ */
+.tablas-apiladas {
+    display: grid;
+    gap: 1rem;
+}
+
+.tablas-apiladas + .fuente {
+    margin-top: 0.75rem;
+}

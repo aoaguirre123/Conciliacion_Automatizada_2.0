@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Conciliacion, Reporte
+from .models import BinTarjeta, Conciliacion, Reporte
 
 
 class ReporteEnLinea(admin.TabularInline):
@@ -17,3 +17,11 @@ class ConciliacionAdmin(admin.ModelAdmin):
     list_filter = ("moneda", "cuadrado")
     readonly_fields = ("moneda", "creada", "usuario", "archivos", "cuadrado", "monto_por_revisar", "resultado")
     inlines = [ReporteEnLinea]
+
+
+@admin.register(BinTarjeta)
+class BinTarjetaAdmin(admin.ModelAdmin):
+    list_display = ("bin", "marca", "tipo", "nivel", "banco", "pais")
+    list_filter = ("marca", "tipo", "pais_codigo")
+    search_fields = ("bin", "banco")
+    show_full_result_count = False  # son ~375.000 filas: evita contar todo en cada búsqueda

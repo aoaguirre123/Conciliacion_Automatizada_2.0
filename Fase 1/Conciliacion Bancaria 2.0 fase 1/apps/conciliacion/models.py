@@ -54,3 +54,23 @@ class Reporte(models.Model):
 
     def get_absolute_url(self):
         return reverse("conciliacion:descargar", args=[self.conciliacion_id, self.clave])
+
+
+class BinTarjeta(models.Model):
+    """Datos de un BIN (6 primeros dígitos de la tarjeta). Se carga con migrate desde datos/bines.csv.gz."""
+
+    bin = models.CharField(max_length=6, primary_key=True)
+    marca = models.CharField(max_length=30)
+    tipo = models.CharField(max_length=10, blank=True, help_text="Crédito, Débito o Prepago.")
+    nivel = models.CharField(max_length=40, blank=True, help_text="Classic, Gold, Platinum…")
+    banco = models.CharField(max_length=120, blank=True)
+    pais_codigo = models.CharField(max_length=2, blank=True)
+    pais = models.CharField(max_length=60, blank=True)
+
+    class Meta:
+        ordering = ["bin"]
+        verbose_name = "BIN de tarjeta"
+        verbose_name_plural = "BIN de tarjetas"
+
+    def __str__(self):
+        return f"{self.bin} {self.marca} {self.banco}".strip()
