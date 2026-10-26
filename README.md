@@ -6,7 +6,7 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 <a id="informacion-del-proyecto" name="informacion-del-proyecto"></a>
 ## 📋 Información del Proyecto
 
-- **Proyecto:** Conciliación Automatizada 2.0 (Tarjetas CLP/USD + 3-Way Match Bancario)
+- **Proyecto:** Conciliación Automatizada 2.0 (Tarjetas CLP/USD; 3-Way Match Bancario con alcance en evaluación)
 - **Cliente / Organización:** Hotel Plaza San Francisco (Santiago, Chile)
 - **Institución:** Duoc UC — Escuela de Informática y Telecomunicaciones
 - **Carrera:** Ingeniería en Informática
@@ -48,7 +48,7 @@ Sistema web de automatización de conciliaciones contables y bancarias desarroll
 <a id="descripcion-y-alcance" name="descripcion-y-alcance"></a>
 ## 🎯 Descripción y Alcance de la Solución
 
-El proyecto reemplaza el procedimiento manual de revisión línea por línea (que tomaba entre 2 y 4 horas diarias) mediante una plataforma web desacoplada que procesa **6 archivos Excel nativos** sin modificación previa:
+El proyecto reemplaza el procedimiento manual de revisión línea por línea (que tomaba entre 2 y 4 horas diarias) mediante una plataforma web que procesa los **archivos Excel tal como se descargan**, sin modificación previa. El alcance definido con el cliente es el siguiente (lo ya implementado se detalla en [Estado Actual del Desarrollo](#estado-actual)):
 
 1. **Ingesta Masiva de Archivos Nativos:** Carga directa de planillas descargadas de Transbank (Débito, Crédito CLP/USD y Prepago), ERP CM SFM (Borderó) y Banco (Cartola / Control Financiero).
 2. **Motor de Conciliación de Tarjetas (CLP / USD):**
@@ -76,8 +76,8 @@ El proyecto reemplaza el procedimiento manual de revisión línea por línea (qu
 <a id="arquitectura" name="arquitectura"></a>
 ## 📐 Arquitectura del Sistema
 
-**Estilo Arquitectónico: Arquitectura por Capas (N-Tier) orientada a un Pipeline de Procesamiento Batch con Motor de Reglas (3-Way Match).**
-El flujo de trabajo y la arquitectura general de la **Plataforma Conciliación 2.0** se estructuran en 4 capas principales:
+**Estilo Arquitectónico: Aplicación web por capas sobre el patrón MVT de Django (Modelo–Vista–Plantilla), con procesamiento por lotes de los archivos cargados.**
+La lógica de conciliación vive en módulos independientes de las vistas (`lectura.py`, `logica.py`, `logica_clp.py`), lo que permite probarla por separado y reutilizarla. El flujo de trabajo se estructura en 4 capas principales:
 
 #### 1. Usuarios
 Diseñado para la interacción de las áreas operativas y de control:
@@ -86,18 +86,18 @@ Diseñado para la interacción de las áreas operativas y de control:
 * **Auditoría**
 
 #### 2. Insumos
-El sistema soporta la **carga directa** de 6 archivos Excel nativos provenientes de las distintas fuentes operativas:
-* **Transbank** (Comprobantes y liquidaciones)
-* **ERP CM SFM** (Registros contables)
-* **Cartola Bancaria** (Extractos bancarios)
-* **Control Interno** (Archivos auxiliares de validación)
+El sistema soporta la **carga directa** de los archivos Excel nativos de cada fuente operativa:
+* **Transbank:** reporte «Abonos por día» en pesos y en dólares (crédito, débito y prepago, en uno o varios archivos) y la liquidación en dólares del formato anterior.
+* **ERP CM SFM:** BORDERO de débitos y créditos del FrontOffice y cuentas por cobrar de tarjetas en dólares (Amex, Diners, Visa y Mastercard).
+* **Cartola Bancaria:** BancoEstado (pesos) y Banco de Chile (pesos y dólares).
+* **Control Interno:** insumo del 3-Way Match bancario, por definir junto al cliente.
 
 #### 3. Plataforma Conciliación 2.0 (Core)
 Módulo central encargado del procesamiento, lógica de negocio y presentación de datos:
 * **Ingesta de Archivos:** Recibe, valida y parsea los archivos cargados por los usuarios antes de su procesamiento.
-* **Motor Bancario 3-Way Match:** Ejecuta el algoritmo de conciliación tripartita para validar los movimientos bancarios frente a los registros contables y de control.
-* **Motor Conciliación Tarjetas (CLP / USD):** Procesa y concilia transacciones operadas con tarjeta de crédito/débito tanto en moneda local (CLP) como extranjera (USD).
-* **Reporte de Excepciones & Dashboard:** Módulo de visualización y salida que consolida los resultados de ambos motores, exponiendo un panel con métricas clave y la lista detallada de discrepancias/excepciones.
+* **Motor Conciliación Tarjetas (CLP / USD):** Procesa y concilia transacciones operadas con tarjeta de crédito, débito y prepago tanto en moneda local (CLP) como extranjera (USD).
+* **Motor Bancario 3-Way Match:** Conciliación tripartita de los movimientos bancarios frente a los registros contables y de control. *Planificado; alcance en evaluación.*
+* **Resultados, Excepciones e Historial:** Pantalla de resultados con indicadores y detalle de discrepancias, reportes Excel descargables e historial de todas las conciliaciones realizadas.
 
 #### 4. Base de Datos e Infraestructura
 * **Capa de Persistencia:** Base de datos **SQLite** gestionada con el ORM de Django (usuarios, historial de conciliaciones, reportes Excel y base de BIN).
@@ -106,13 +106,24 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 <a id="estado-actual" name="estado-actual"></a>
 ## 🚦 Estado Actual del Desarrollo
 
-La versión vigente del sistema es **Conciliación bancaria**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
+La versión vigente del sistema es **Conciliación bancaria v3.3.0**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
 
 #### Módulos Disponibles
-* **Conciliación en Dólares (USD):** Cruce entre ERP, Transbank, cartolas de las marcas internacionales (**Amex, Diners, Visa y Mastercard**) y banco, utilizando el dólar observado obtenido desde **mindicador.cl**.
-* **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**) contra los pagos con tarjeta del **BORDERO**, con verificación del abono en la cartola bancaria.
+* **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**, en uno o varios archivos) contra los pagos con tarjeta del **BORDERO** por código de autorización y monto, con verificación del abono en la cartola de **BancoEstado** o **Banco de Chile**. Detecta diferencias de monto, ventas sin registro, ventas fuera del período, errores de digitación del código y datos duplicados.
+* **Conciliación en Dólares (USD):** Cruce entre Transbank, el BORDERO (ERP), las cuentas por cobrar de **Amex, Diners, Visa y Mastercard** y la cartola en dólares de **Banco de Chile**. Muestra como referencia el dólar observado del día (**mindicador.cl**).
 * **Historial:** Registro de todas las conciliaciones guardadas, con su resultado y los reportes Excel descargables.
-* **Identificación de Tarjetas:** En la conciliación en pesos, cada venta se identifica por los **6 primeros dígitos (BIN)** de la tarjeta: **marca, tipo (crédito, débito o prepago), banco emisor y país**. Se muestra en el resultado y en los Excel, sin depender de internet.
+* **Identificación de Tarjetas:** Cada venta se identifica por los **6 primeros dígitos (BIN)** de la tarjeta: **marca, tipo (crédito, débito o prepago), banco emisor y país**, sin depender de internet. En dólares se usa para saber la marca de cada venta.
+* **Usuarios:** Inicio de sesión por correo; todas las pantallas requieren sesión.
+
+#### Pendientes
+* Margen de tolerancia configurable ($500 a $1.000 CLP); hoy es fijo.
+* Pre-visualización de los archivos antes de conciliar.
+* Clasificación de cuotas diferidas, anulaciones y notas de crédito, con acción sugerida por caso.
+* Exportación en PDF.
+* Dashboard consolidado con indicadores acumulados, gráficos y filtros por fecha.
+* Arrastre de movimientos pendientes entre conciliaciones.
+* Roles por perfil (Tesorería, Contabilidad, Auditoría).
+* Conciliación bancaria 3-Way Match (alcance en evaluación).
 
 #### Tecnologías Utilizadas
 * **Framework:** Django 5.1+ (plantillas HTML, CSS y JavaScript)
@@ -141,9 +152,11 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña del usuario.
+Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña del usuario de prueba incluido en `db.sqlite3`, o crear uno nuevo con `python manage.py createsuperuser`.
 
-> 💳 **Base de BIN:** la primera vez, `migrate` también carga la base de tarjetas (~375.000 BIN), por lo que demora un poco más.
+> 💳 **Base de BIN:** si se parte sin `db.sqlite3`, `migrate` crea la base y carga las tarjetas (~375.000 BIN), por lo que demora un poco más.
+
+> ✅ **Pruebas automáticas:** `python manage.py test apps.conciliacion` ejecuta las pruebas con datos sintéticos (no se incluyen datos reales del hotel en el repositorio).
 
 > 🍎 **macOS / Linux:** activar el entorno con `source entorno/bin/activate`.
 
@@ -155,7 +168,7 @@ Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña
 * **Inicio de sesión por correo:** el login solicita **correo electrónico**, por lo que cada usuario debe tener un correo registrado.
 * **Creación de usuarios:**
   * Desde la terminal con `python manage.py createsuperuser`.
-  * Desde la opción **"Usuarios y permisos"** del menú (disponible solo para usuarios *staff*).
+  * Desde la opción **"Usuarios y permisos"** del menú (administración de Django, disponible solo para usuarios *staff*).
 
 ---
 <a id="estructura" name="estructura"></a>
@@ -163,25 +176,32 @@ Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña
 
 ```
 Conciliacion_Bancaria_2.0/
-├── config/                    configuración de Django
+├── config/                    configuración de Django (settings, urls)
+│   └── formatos/es_CL/        formato chileno de números (miles con punto, decimales con coma)
 ├── apps/
 │   ├── core/                  pantalla de inicio
 │   ├── usuarios/              login y cierre de sesión
 │   └── conciliacion/
+│       ├── lectura.py         lectura de archivos (.xls, .xlsx, .ods, CSV y HTML) detectando el formato
 │       ├── logica.py          conciliación en dólares y sus Excel
 │       ├── logica_clp.py      conciliación en pesos contra el BORDERO y sus Excel
 │       ├── models.py          historial (Conciliacion, Reporte) y BIN de tarjetas (BinTarjeta)
 │       ├── registro.py        guarda cada conciliación en el historial
 │       ├── dolar.py           dólar observado (mindicador.cl)
 │       ├── bines.py           identificación de tarjetas por BIN
-│       ├── datos/             bines.csv.gz (base de BIN) y preparar_bines.py (para actualizarla)
-│       └── views.py           pantallas, historial y descargas
-├── templates/                 HTML
+│       ├── views.py           pantallas, historial y descargas
+│       ├── tests.py           pruebas automáticas con datos sintéticos
+│       ├── migrations/        tablas de la base de datos y carga inicial de BIN
+│       └── datos/             bines.csv.gz (base de BIN) y preparar_bines.py (para actualizarla)
+├── templates/                 HTML (base, menú, login, inicio y pantallas de conciliación)
 ├── static/
 │   ├── css/app.css            hoja de estilos única
-│   └── js/                    app.js (menú) y conciliacion.js (carga de archivos)
+│   ├── js/                    app.js (menú) y conciliacion.js (carga de archivos)
+│   └── img/                   logo y fondo del login
+├── db.sqlite3                 base de datos con un usuario de prueba
 ├── manage.py
-└── requirements.txt
+├── requirements.txt
+└── README.md                  instrucciones de la aplicación
 ```
 
 ---
@@ -210,10 +230,10 @@ Para la ejecución del proyecto se utiliza una **metodología ágil adaptada (Sc
 ####  Fase 3: Desarrollo Incremental
 * **Objetivo:** Implementación iterativa de los componentes centrales de la plataforma.
 * **Actividades:**
-  * **Módulo de Ingesta:** Lectura, validación y parseo de los 6 Excels nativos.
-  * **Motor de Conciliación:** Desarrollo del algoritmo *3-Way Match* bancario y motor de tarjetas (CLP / USD).
+  * **Módulo de Ingesta:** Lectura, validación y parseo de los archivos Excel nativos.
+  * **Motor de Conciliación:** Motor de tarjetas (CLP / USD) con verificación del abono en el banco; *3-Way Match* bancario según el alcance que se confirme.
   * **Módulo de Discrepancias:** Gestión y clasificación de inconsistencias.
-  * **Dashboards:** Visualización gráfica de métricas y reportes ejecutivos.
+  * **Resultados e Historial:** Indicadores, reportes Excel e historial de conciliaciones.
 
 ####  Fase 4: Pruebas y Control de Calidad (QA)
 * **Objetivo:** Asegurar la consistencia, seguridad e integridad financiera de los cálculos.
