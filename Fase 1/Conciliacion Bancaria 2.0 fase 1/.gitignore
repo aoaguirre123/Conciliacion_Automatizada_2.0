@@ -1,5 +1,33 @@
+# Entornos virtuales
 entorno/
+venv/
+.venv/
+env/
+
+# Python
 __pycache__/
-*.pyc
-staticfiles/
+*.py[cod]
+
+# Django
 db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+*.log
+
+# Variables y claves locales
+.env
+.env.*
+
+# Archivos de datos del hotel
+*.xls
+*.xlsx
+*.xlsm
+*.ods
+*.csv
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
