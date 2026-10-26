@@ -4,7 +4,7 @@ Aplicación web Django para conciliar las ventas con tarjeta del hotel en pesos 
 
 ## Puesta en marcha (Windows)
 
-Abre una terminal **dentro de esta carpeta** (`Conciliacion Bancaria 2.0 fase 1`, la que tiene `manage.py`):
+Abre una terminal **dentro de esta carpeta** (`Conciliacion_Bancaria_2.0`, la que tiene `manage.py`):
 
 ```
 python -m venv entorno

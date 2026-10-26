@@ -62,11 +62,15 @@ El proyecto reemplaza el procedimiento manual de revisión línea por línea (qu
 <a id="stack-tecnologico" name="stack-tecnologico"></a>
 ## 🛠️ Stack Tecnológico
 
-- **Frontend:** Angular SPA (Interfaz web responsive e intuitiva)
-- **Backend:** Python 3.12 / Django REST Framework (Motor de procesamiento algorítmico)
-- **Base de Datos:** PostgreSQL / SQL Server
-- **Bibliotecas y Herramientas:** Pandas, OpenPyXL, ReportLab, Graphviz, Git/GitHub
-- **Despliegue:** Servidor Local / Entorno Cloud (GCP / Azure)
+- **Frontend:** Plantillas HTML de Django, CSS y JavaScript (interfaz web responsive)
+- **Backend:** Python 3.12 / Django 5.1+ (motor de conciliación y vistas)
+- **Base de Datos:** SQLite
+- **Procesamiento de Archivos:** Pandas, OpenPyXL (`.xlsx`), xlrd (`.xls`), lxml (`.xls` exportados como página web) y odfpy (`.ods`)
+- **Servicios Externos:** httpx para el dólar observado (mindicador.cl)
+- **Herramientas:** Git / GitHub
+- **Despliegue:** Servidor del CITT (aplicación web, sin instalación en los equipos del hotel)
+
+> ℹ️ **Cambio respecto al diseño inicial:** la Fase 1 contemplaba Angular + Django REST Framework + PostgreSQL / SQL Server. Para entregar una primera versión funcional dentro del semestre se optó por una aplicación Django con plantillas y SQLite: un solo proyecto, más simple de instalar en el servidor del CITT. La lógica de conciliación está separada de las vistas, por lo que una API o una base de datos distinta pueden incorporarse más adelante.
 
 ---
 <a id="arquitectura" name="arquitectura"></a>
@@ -96,13 +100,13 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 * **Reporte de Excepciones & Dashboard:** Módulo de visualización y salida que consolida los resultados de ambos motores, exponiendo un panel con métricas clave y la lista detallada de discrepancias/excepciones.
 
 #### 4. Base de Datos e Infraestructura
-* **Capa de Persistencia:** Gestión de datos estructurados mediante **PostgreSQL** o **SQL Server**.
-* **Despliegue:** Flexible para integrarse tanto en un **Servidor Local (On-Premise)** como en entornos **Cloud**.
+* **Capa de Persistencia:** Base de datos **SQLite** gestionada con el ORM de Django (usuarios, historial de conciliaciones, reportes Excel y base de BIN).
+* **Despliegue:** Aplicación web instalada en el **servidor del CITT**; los usuarios acceden desde el navegador.
 ---
 <a id="estado-actual" name="estado-actual"></a>
 ## 🚦 Estado Actual del Desarrollo
 
-La versión vigente del sistema es **Conciliación bancaria**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Fase 1/Conciliacion Bancaria 2.0 fase 1/`.
+La versión vigente del sistema es **Conciliación bancaria**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
 
 #### Módulos Disponibles
 * **Conciliación en Dólares (USD):** Cruce entre ERP, Transbank, cartolas de las marcas internacionales (**Amex, Diners, Visa y Mastercard**) y banco, utilizando el dólar observado obtenido desde **mindicador.cl**.
@@ -113,7 +117,7 @@ La versión vigente del sistema es **Conciliación bancaria**, desarrollada como
 #### Tecnologías Utilizadas
 * **Framework:** Django 5.1+ (plantillas HTML, CSS y JavaScript)
 * **Base de Datos:** SQLite
-* **Procesamiento de Archivos:** Pandas, OpenPyXL y xlrd (cartolas `.xls` de Amex, Diners, Visa y Mastercard)
+* **Procesamiento de Archivos:** Pandas, OpenPyXL, xlrd, lxml y odfpy (`.xlsx`, `.xls`, `.ods`, CSV y `.xls` exportados como página web; el formato se detecta por contenido)
 * **Servicios Externos:** httpx para consultar el dólar observado en mindicador.cl
 * **Datos de BIN:** [bin-list-data](https://github.com/venelinkochev/bin-list-data) (licencia **CC-BY-4.0**), incluida en el proyecto y cargada en la base de datos con `migrate`
 
@@ -129,7 +133,7 @@ La versión vigente del sistema es **Conciliación bancaria**, desarrollada como
 Abrir una terminal en la raíz del repositorio clonado y ejecutar:
 
 ```
-cd "Fase 1\Conciliacion Bancaria 2.0 fase 1"
+cd Conciliacion_Bancaria_2.0
 python -m venv entorno
 entorno\Scripts\activate
 pip install -r requirements.txt
@@ -147,7 +151,7 @@ Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña
 <a id="usuarios" name="usuarios"></a>
 ## 👤 Gestión de Usuarios
 
-* **Base de datos heredada:** `db.sqlite3` proviene del proyecto anterior, por lo que los usuarios existentes siguen funcionando.
+* **Base de datos:** `db.sqlite3` incluye solo un usuario de prueba; las conciliaciones de cada equipo no se suben al repositorio.
 * **Inicio de sesión por correo:** el login solicita **correo electrónico**, por lo que cada usuario debe tener un correo registrado.
 * **Creación de usuarios:**
   * Desde la terminal con `python manage.py createsuperuser`.
@@ -158,7 +162,7 @@ Luego abrir **http://127.0.0.1:8000/** e ingresar con el correo y la contraseña
 ## 📁 Estructura del Proyecto
 
 ```
-Fase 1/Conciliacion Bancaria 2.0 fase 1/
+Conciliacion_Bancaria_2.0/
 ├── config/                    configuración de Django
 ├── apps/
 │   ├── core/                  pantalla de inicio
@@ -199,9 +203,9 @@ Para la ejecución del proyecto se utiliza una **metodología ágil adaptada (Sc
 ####  Fase 2: Diseño y Arquitectura
 * **Objetivo:** Definición de la estructura de datos, componentes de software y experiencia de usuario.
 * **Actividades:**
-  * Modelado relacional de la Base de Datos (PostgreSQL / SQL Server).
-  * Diseños y prototipado UI/UX de la interfaz gráfica en **Angular**.
-  * Definición de la arquitectura de la API REST y especificación de endpoints en **Django**.
+  * Modelado de la Base de Datos con el ORM de **Django** (SQLite).
+  * Diseño y prototipado UI/UX de la interfaz web con plantillas de **Django**.
+  * Definición de la arquitectura por capas: lectura de archivos, motores de conciliación, vistas y persistencia.
 
 ####  Fase 3: Desarrollo Incremental
 * **Objetivo:** Implementación iterativa de los componentes centrales de la plataforma.
@@ -214,12 +218,12 @@ Para la ejecución del proyecto se utiliza una **metodología ágil adaptada (Sc
 ####  Fase 4: Pruebas y Control de Calidad (QA)
 * **Objetivo:** Asegurar la consistencia, seguridad e integridad financiera de los cálculos.
 * **Actividades:**
-  * Pruebas unitarias y de integración para frontend y backend.
+  * Pruebas automatizadas de Django con datos sintéticos (lectura de archivos, motores CLP / USD y pantallas).
   * Pruebas de **precisión algorítmica** utilizando volúmenes de datos reales para garantizar la exactitud en el cruce de transacciones.
 
 ####  Fase 5: Despliegue y Documentación
 * **Objetivo:** Puesta en producción y entrega formal de la solución.
 * **Actividades:**
-  * Publicación e integración continua en entorno Cloud (**GCP / Azure**).
+  * Instalación y puesta en marcha en el **servidor del CITT**.
   * Elaboración del manual de usuario para el equipo operativo (Tesorería, Contabilidad, Auditoría).
   * Documentación técnica del repositorio y finalización del proyecto.
