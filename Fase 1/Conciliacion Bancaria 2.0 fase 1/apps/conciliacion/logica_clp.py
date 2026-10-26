@@ -15,9 +15,11 @@ una sola vez, y las pasadas van de la coincidencia más segura a la menos segura
 
 Todo el estado es local a cada llamada: no hay variables globales.
 """
+import hashlib
 import re
 import unicodedata
 from collections import defaultdict
+from itertools import combinations
 from datetime import date, datetime
 from io import BytesIO
 
@@ -26,19 +28,25 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from . import lectura
+
 from .bines import SIN_IDENTIFICAR, agrupar, bin_de, identificar_local
 
 TOLERANCIA = 10  # pesos: diferencias de redondeo entre el FrontOffice y Transbank
 
 # Campo del formulario -> (medio de pago, nombre visible)
+# Campos antiguos del formulario (un archivo por medio). Se siguen aceptando; hoy basta con
+# el campo "transbank", que recibe uno o varios archivos con cualquier combinación de medios.
 ARCHIVOS_TBK = {
     "credito": "Crédito",
     "debito": "Débito",
     "prepago": "Prepago",
 }
+ORDEN_MEDIOS = ["Crédito", "Débito", "Prepago"]
 
 NOMBRES_ARCHIVO = {
     "bordero": "BORDERO",
+    "transbank": "Transbank",
     "credito": "Transbank Crédito",
     "debito": "Transbank Débito",
     "prepago": "Transbank Prepago",
@@ -54,7 +62,10 @@ CODIGOS_TARJETA_CLP = {
     "DI$": "Diners",
     "RCO": "Redcompra",
 }
-PATRON_TARJETA = re.compile(r"visa|master|amex|diners|dinners|red ?compra|prepago|d[eé]bito|magna", re.I)
+# Respaldo para códigos de tarjeta nuevos que no estén en CODIGOS_TARJETA_CLP: la descripción debe
+# nombrar una marca. No se usa "débito" suelto porque también aparece en "IVA Débito Fiscal".
+PATRON_TARJETA = re.compile(r"\b(visa|master ?card|amex|american express|diners|dinners|red ?compra|prepago|magna)\b", re.I)
+CODIGOS_NO_TARJETA = {"IVA", "TAX", "PROP", "E$", "EUS$", "CXCN", "CXCE"}  # impuestos, propinas, efectivo, cuentas por cobrar
 
 MESES = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7,
@@ -132,12 +143,22 @@ def _codigo_flexible(valor):
     return _codigo(_texto(valor).upper().replace("I", "1").replace("O", "0"))
 
 
-def _leer(archivo):
-    archivo.seek(0)
+def _leer(archivo, condicion=None):
+    """Hoja del archivo que contiene la tabla buscada (cualquier formato, ver lectura.py).
+
+    Revisa todas las hojas: BancoEstado, por ejemplo, entrega la cartola con una hoja
+    "Resumen" y los movimientos en la segunda hoja. Si ninguna hoja tiene una fila que
+    cumpla `condicion`, devuelve la primera y el que llama informa el error.
+    """
     try:
-        return pd.read_excel(archivo, header=None, dtype=object)
-    except Exception as exc:  # noqa: BLE001
-        raise ArchivoInvalido(f"No se pudo abrir {getattr(archivo, 'name', 'el archivo')}: {exc}") from exc
+        hojas = lectura.leer_hojas(archivo)
+    except lectura.FormatoNoSoportado as exc:
+        raise ArchivoInvalido(str(exc)) from exc
+    if condicion is not None:
+        for _, df in hojas:
+            if _buscar_fila(df, condicion) is not None:
+                return df
+    return hojas[0][1]
 
 
 def _buscar_fila(raw, condicion):
@@ -152,8 +173,9 @@ def _buscar_fila(raw, condicion):
 # ---------------------------------------------------------------------------
 def leer_bordero(archivo):
     """Pagos con tarjeta en pesos del BORDERO, sin anulaciones compensadas."""
-    raw = _leer(archivo)
-    fila = _buscar_fila(raw, lambda f: "Cod. Deb." in f and "Documento" in f and "Valor" in f)
+    es_encabezado = lambda f: "Cod. Deb." in f and "Documento" in f and "Valor" in f  # noqa: E731
+    raw = _leer(archivo, es_encabezado)
+    fila = _buscar_fila(raw, es_encabezado)
     if fila is None:
         raise ArchivoInvalido("El BORDERO no tiene la fila de encabezados (Cod. Deb., Valor, Documento).")
     encabezado = [_texto(v) for v in raw.iloc[fila].tolist()]
@@ -173,7 +195,12 @@ def leer_bordero(archivo):
         desc = _texto(raw.iat[i, col["Descripción"]]) if "Descripción" in col else ""
         if not cod or cod == "COD. DEB.":
             continue
-        es_tarjeta = cod in CODIGOS_TARJETA_CLP or (PATRON_TARJETA.search(desc) and "US$" not in desc.upper() and not cod.endswith("US$"))
+        es_tarjeta = cod in CODIGOS_TARJETA_CLP or (
+            cod not in CODIGOS_NO_TARJETA
+            and PATRON_TARJETA.search(desc)
+            and "US$" not in desc.upper()
+            and not cod.endswith("US$")
+        )
         if not es_tarjeta:
             continue
         pagos.append({
@@ -207,12 +234,43 @@ def leer_bordero(archivo):
     return pagos, periodo
 
 
-def leer_transbank(archivo, medio):
-    """Reporte 'Abonos por día' de Transbank: resumen del abono y detalle de ventas."""
-    raw = _leer(archivo)
-    fila = _buscar_fila(raw, lambda f: "Fecha de venta" in f)
+def _medio(valor):
+    """'Crédito', 'Débito' o 'Prepago' a partir del texto de Transbank; '' si no se reconoce."""
+    texto = _sin_tildes(_texto(valor))
+    for clave, nombre in (("credito", "Crédito"), ("debito", "Débito"), ("prepago", "Prepago")):
+        if clave in texto:
+            return nombre
+    return ""
+
+
+def _dato_encabezado(raw, hasta, etiqueta):
+    """Valor bajo «<etiqueta>:» en el encabezado del reporte (misma columna, fila siguiente)."""
+    fila = _buscar_fila(raw.iloc[:hasta], lambda f: any(v.startswith(etiqueta + ":") for v in f))
+    if fila is None or fila + 1 >= hasta:
+        return ""
+    for j, v in enumerate(raw.iloc[fila].tolist()):
+        if _texto(v).startswith(etiqueta + ":"):
+            return _texto(raw.iat[fila + 1, j])
+    return ""
+
+
+def es_en_dolares(liquidacion):
+    texto = _sin_tildes(liquidacion.get("moneda", ""))
+    return "dolar" in texto or "usd" in texto or "us$" in texto
+
+
+def leer_transbank(archivo, medio=None):
+    """Reporte 'Abonos por día' de Transbank: resumen del abono y detalle de ventas.
+
+    El medio de pago de cada venta sale de su columna «Medio de pago». Si no existe, se usa el
+    del encabezado del reporte («Medio de pago: Crédito») y, por último, `medio`.
+    """
+    nombre_archivo = getattr(archivo, "name", "") or "Transbank"
+    es_encabezado = lambda f: "Fecha de venta" in f  # noqa: E731
+    raw = _leer(archivo, es_encabezado)
+    fila = _buscar_fila(raw, es_encabezado)
     if fila is None:
-        raise ArchivoInvalido(f"El archivo de Transbank {medio} no tiene la tabla de detalle ('Fecha de venta').")
+        raise ArchivoInvalido(f"{nombre_archivo} no tiene la tabla de detalle de Transbank ('Fecha de venta').")
 
     nombres = {}
     for c in raw.columns:
@@ -238,8 +296,22 @@ def leer_transbank(archivo, medio):
     c_cuota = columna("N° de cuota")
     c_codigo = columna("Código de autorización de venta")
     c_tarjeta = columna("N° de tarjeta")
+    c_medio = columna("Medio de pago")
+    c_unico = columna("Número único")
+    c_tid = columna("ID transacción")
     if c_monto is None or c_codigo is None:
-        raise ArchivoInvalido(f"El archivo de Transbank {medio} no tiene las columnas de monto y código de autorización.")
+        raise ArchivoInvalido(f"{nombre_archivo} no tiene las columnas de monto y código de autorización de Transbank.")
+
+    # «Medio de pago:» del encabezado del reporte; el valor está en la fila siguiente, misma columna.
+    medio_reporte = ""
+    fila_medio = _buscar_fila(raw.iloc[:fila], lambda f: any(v.startswith("Medio de pago") for v in f))
+    if fila_medio is not None and fila_medio + 1 < fila:
+        for j, v in enumerate(raw.iloc[fila_medio].tolist()):
+            if _texto(v).startswith("Medio de pago"):
+                medio_reporte = _medio(raw.iat[fila_medio + 1, j])
+                break
+    medio_por_defecto = medio_reporte or medio or "Sin medio"
+    moneda = _dato_encabezado(raw, fila, "Moneda")
 
     resumen = {}
     for i in range(fila):
@@ -260,7 +332,10 @@ def leer_transbank(archivo, medio):
         if not _texto(raw.iat[i, c_fecha]):
             continue
         ventas.append({
-            "medio": medio,
+            "medio": (_medio(raw.iat[i, c_medio]) if c_medio is not None else "") or medio_por_defecto,
+            "archivo": nombre_archivo,
+            "unico": _texto(raw.iat[i, c_unico]) if c_unico is not None else "",
+            "tid": _texto(raw.iat[i, c_tid]) if c_tid is not None else "",
             "fecha": _fecha(raw.iat[i, c_fecha]),
             "tipo": _texto(raw.iat[i, c_tipo]) if c_tipo is not None else "",
             "local": _texto(raw.iat[i, c_local]).split(",")[0] if c_local is not None else "",
@@ -280,7 +355,9 @@ def leer_transbank(archivo, medio):
     comision = _numero(resumen.get("comision transbank (-)")) + _numero(resumen.get("iva de comision transbank (-)"))
     total_abono = _numero(resumen.get("total abono")) or sum(v["abono"] for v in ventas)
     return {
-        "medio": medio,
+        "archivo": nombre_archivo,
+        "medio": medio_reporte or medio or "",
+        "moneda": moneda,
         "fecha_abono": fecha_abono,
         "total_ventas": total_ventas,
         "comision": comision,
@@ -289,16 +366,29 @@ def leer_transbank(archivo, medio):
     }
 
 
+def _encabezado_cartola(fila):
+    """Fila de encabezados de una cartola: tiene Fecha, una descripción y una columna de abonos.
+
+    Banco de Chile:  Fecha | Descripción | Canal o Sucursal | Nro. Docto. | Cargos (CLP) | Abonos (CLP) | Saldo
+    BancoEstado:     Fecha | Sucursal | N° Cuenta Corriente | ... | Descripción | Cheques / Cargos | Depósitos / Abonos | Saldo
+    """
+    textos = [lectura.normalizar(v) for v in fila]
+    return "fecha" in textos and any(t.startswith(("descripcion", "glosa", "detalle")) for t in textos) and any("abono" in t for t in textos)
+
+
 def leer_cartola(archivo):
-    """Abonos de Transbank en la cartola del banco."""
-    raw = _leer(archivo)
-    fila = _buscar_fila(raw, lambda f: "Descripción" in f and any(v.startswith("Abonos") for v in f))
+    """Abonos de Transbank en la cartola del banco (Banco de Chile, BancoEstado u otro con el mismo esquema)."""
+    raw = _leer(archivo, _encabezado_cartola)
+    fila = _buscar_fila(raw, _encabezado_cartola)
     if fila is None:
-        raise ArchivoInvalido("La cartola no tiene la fila de encabezados (Fecha, Descripción, Abonos).")
-    encabezado = [_texto(v) for v in raw.iloc[fila].tolist()]
-    c_fecha = encabezado.index("Fecha")
-    c_desc = encabezado.index("Descripción")
-    c_abono = next(i for i, v in enumerate(encabezado) if v.startswith("Abonos"))
+        raise ArchivoInvalido(
+            "La cartola no tiene la fila de encabezados con Fecha, Descripción y una columna de Abonos "
+            "(por ejemplo «Abonos (CLP)» o «Depósitos / Abonos»)."
+        )
+    encabezado = [lectura.normalizar(v) for v in raw.iloc[fila].tolist()]
+    c_fecha = encabezado.index("fecha")
+    c_desc = next(i for i, v in enumerate(encabezado) if v.startswith(("descripcion", "glosa", "detalle")))
+    c_abono = next(i for i, v in enumerate(encabezado) if "abono" in v)
 
     abonos = []
     for i in range(fila + 1, len(raw)):
@@ -420,43 +510,157 @@ def _resumen_tarjetas(ventas):
     }
 
 
+def _lista(valor):
+    if not valor:
+        return []
+    return list(valor) if isinstance(valor, (list, tuple)) else [valor]
+
+
+def _leer_liquidaciones(archivos):
+    """Lee todos los archivos de Transbank (campo «transbank» y campos antiguos por medio).
+
+    Un mismo archivo subido más de una vez se lee solo una vez. Devuelve (liquidaciones,
+    nombres de los archivos repetidos que se ignoraron).
+    """
+    entradas = [(a, None) for a in _lista(archivos.get("transbank"))]
+    entradas += [(a, medio) for campo, medio in ARCHIVOS_TBK.items() for a in _lista(archivos.get(campo))]
+    vistos, liquidaciones, repetidos = set(), [], []
+    for archivo, medio in entradas:
+        archivo.seek(0)
+        huella = hashlib.sha256(archivo.read()).hexdigest()
+        archivo.seek(0)
+        if huella in vistos:
+            repetidos.append(getattr(archivo, "name", "archivo"))
+            continue
+        vistos.add(huella)
+        liquidacion = leer_transbank(archivo, medio)
+        if es_en_dolares(liquidacion):
+            raise ArchivoInvalido(
+                f"{liquidacion['archivo']} es un reporte de Transbank en dólares. "
+                "Cárgalo en la Conciliación en dólares."
+            )
+        liquidaciones.append(liquidacion)
+    return liquidaciones, repetidos
+
+
+def _clave_venta(v):
+    """Identifica una venta para no contarla dos veces si viene en dos archivos."""
+    if v["unico"] and v["unico"] not in ("-", "0"):
+        return ("unico", v["unico"], v["cuota"])
+    return ("datos", v["tid"], v["codigo"], v["monto"], v["valido"], v["fecha"], v["cuota"], v["tarjeta"])
+
+
+def _sin_ventas_repetidas(ventas):
+    vistas, unicas = set(), []
+    for v in ventas:
+        clave = _clave_venta(v)
+        if clave not in vistas:
+            vistas.add(clave)
+            unicas.append(v)
+    return unicas, len(ventas) - len(unicas)
+
+
+def _resumen_por_medio(ventas, liquidaciones):
+    """Totales por medio de pago calculados desde el detalle de ventas.
+
+    Coinciden con el bloque de resumen de Transbank («Total ventas», «Comisión», «Total abono»)
+    y funcionan también cuando un archivo trae varios medios mezclados.
+    """
+    fechas_por_archivo = {liq["archivo"]: liq["fecha_abono"] for liq in liquidaciones}
+    grupos = {}
+    for v in ventas:
+        grupos.setdefault(v["medio"], []).append(v)
+    orden = sorted(grupos, key=lambda m: (ORDEN_MEDIOS.index(m) if m in ORDEN_MEDIOS else len(ORDEN_MEDIOS), m))
+    medios = []
+    for medio in orden:
+        propias = grupos[medio]
+        fechas = sorted({fechas_por_archivo.get(v["archivo"]) for v in propias} - {None})
+        medios.append({
+            "medio": medio,
+            "fecha_abono": ", ".join(f.strftime("%d-%m-%Y") for f in fechas),
+            "archivos": sorted({v["archivo"] for v in propias}),
+            "ventas": len(propias),
+            "total_ventas": sum(v["valido"] or v["monto"] for v in propias),
+            "comision": sum(v["comision"] for v in propias),
+            "total_abono": sum(v["abono"] for v in propias),
+            "conciliado": sum(v["monto_bordero"] or 0 for v in propias if v["estado"] in ("conciliado", "diferencia")),
+            "por_revisar": sum(_por_revisar(v) for v in propias),
+            "banco": "no_encontrado",
+            "fecha_banco": "",
+            "nota_banco": "",
+        })
+    return medios
+
+
+def _buscar_abonos(medios, liquidaciones, abonos_banco):
+    """Marca en qué medios se encontró el abono en la cartola.
+
+    1. Un abono por medio de pago (lo habitual).
+    2. Si no, un abono que sume varios medios (por ejemplo débito + prepago, o el total de un
+       archivo que trae los tres medios juntos).
+    Cada movimiento del banco se usa una sola vez; se prefiere el de la misma fecha del abono.
+    """
+    usados = set()
+
+    def buscar(monto, fecha_texto):
+        candidatos = [i for i, a in enumerate(abonos_banco) if i not in usados and abs(a["monto"] - monto) < 1]
+        candidatos.sort(key=lambda i: (abonos_banco[i]["fecha"].strftime("%d-%m-%Y") if abonos_banco[i]["fecha"] else "") not in fecha_texto)
+        if candidatos:
+            usados.add(candidatos[0])
+            return abonos_banco[candidatos[0]]
+        return None
+
+    def marcar(grupo, banco, nota=""):
+        for m in grupo:
+            m["banco"] = "encontrado"
+            m["fecha_banco"] = banco["fecha"].strftime("%d-%m-%Y") if banco["fecha"] else ""
+            m["nota_banco"] = nota
+
+    for m in medios:
+        banco = buscar(m["total_abono"], m["fecha_abono"])
+        if banco:
+            marcar([m], banco)
+
+    pendientes = [m for m in medios if m["banco"] != "encontrado" and m["total_abono"]]
+    for tamano in range(len(pendientes), 1, -1):
+        for grupo in combinations(pendientes, tamano):
+            if any(m["banco"] == "encontrado" for m in grupo):
+                continue
+            banco = buscar(sum(m["total_abono"] for m in grupo), " ".join(m["fecha_abono"] for m in grupo))
+            if banco:
+                marcar(grupo, banco, "Abono conjunto: " + " + ".join(m["medio"] for m in grupo))
+
+
+def _archivos_usados(archivos, liquidaciones):
+    usados = []
+    if archivos.get("bordero"):
+        usados.append("BORDERO")
+    if liquidaciones:
+        usados.append("Transbank (" + ", ".join(liq["archivo"] for liq in liquidaciones) + ")")
+    if archivos.get("cartola"):
+        usados.append("Cartola bancaria")
+    return usados
+
+
 def procesar(archivos, identificar=identificar_local):
     """Ejecuta la conciliación en pesos. Devuelve (resultado para la pantalla, reportes Excel).
 
     `identificar` recibe un conjunto de BIN y devuelve {bin: datos}; por defecto solo la marca.
     """
     pagos, periodo = leer_bordero(archivos["bordero"])
-    liquidaciones = [leer_transbank(archivos[campo], medio) for campo, medio in ARCHIVOS_TBK.items() if archivos.get(campo)]
+    liquidaciones, repetidos = _leer_liquidaciones(archivos)
     abonos_banco = leer_cartola(archivos["cartola"]) if archivos.get("cartola") else None
 
-    ventas = [v for liq in liquidaciones for v in liq["ventas"]]
+    ventas, ventas_repetidas = _sin_ventas_repetidas([v for liq in liquidaciones for v in liq["ventas"]])
     _identificar_tarjetas(ventas, identificar)
     pendientes_bordero = _cruzar(ventas, pagos, periodo)
 
-    # Abono de cada liquidación en el banco (mismo monto; se prefiere la misma fecha).
-    usados_banco = set()
-    medios = []
-    for liq in liquidaciones:
-        propias = [v for v in liq["ventas"]]
-        banco = None
-        if abonos_banco is not None:
-            candidatos = [i for i, a in enumerate(abonos_banco) if i not in usados_banco and abs(a["monto"] - liq["total_abono"]) < 1]
-            candidatos.sort(key=lambda i: abonos_banco[i]["fecha"] != liq["fecha_abono"])
-            if candidatos:
-                usados_banco.add(candidatos[0])
-                banco = abonos_banco[candidatos[0]]
-        medios.append({
-            "medio": liq["medio"],
-            "fecha_abono": liq["fecha_abono"].strftime("%d-%m-%Y") if liq["fecha_abono"] else "",
-            "ventas": len(propias),
-            "total_ventas": liq["total_ventas"],
-            "comision": liq["comision"],
-            "total_abono": liq["total_abono"],
-            "conciliado": sum(v["monto_bordero"] or 0 for v in propias if v["estado"] in ("conciliado", "diferencia")),
-            "por_revisar": sum(_por_revisar(v) for v in propias),
-            "banco": "sin_cartola" if abonos_banco is None else ("encontrado" if banco else "no_encontrado"),
-            "fecha_banco": banco["fecha"].strftime("%d-%m-%Y") if banco and banco["fecha"] else "",
-        })
+    medios = _resumen_por_medio(ventas, liquidaciones)
+    if abonos_banco is not None:
+        _buscar_abonos(medios, liquidaciones, abonos_banco)
+    for m in medios:
+        if abonos_banco is None:
+            m["banco"] = "sin_cartola"
 
     total = {
         "medio": "Total",
@@ -480,6 +684,8 @@ def procesar(archivos, identificar=identificar_local):
         "fuera_periodo": cuenta("fuera_periodo"),
         "bordero_pendiente": len(pendientes_bordero),
         "abonos_faltantes": abonos_faltantes,
+        "archivos_repetidos": repetidos,
+        "ventas_repetidas": ventas_repetidas,
         "banco_cargado": abonos_banco is not None,
         "periodo_bordero": f"{periodo[0]:%d-%m-%Y} al {periodo[1]:%d-%m-%Y}" if periodo else "",
     }
@@ -497,7 +703,7 @@ def procesar(archivos, identificar=identificar_local):
         "total_medios": total,
         "observaciones": observaciones,
         "tarjetas": _resumen_tarjetas(ventas),
-        "archivos_usados": [NOMBRES_ARCHIVO[c] for c in NOMBRES_ARCHIVO if archivos.get(c)],
+        "archivos_usados": _archivos_usados(archivos, liquidaciones),
     }
     reportes = [
         ("completa", "Conciliación completa", "Resumen, todas las ventas de Transbank y lo pendiente del BORDERO.",

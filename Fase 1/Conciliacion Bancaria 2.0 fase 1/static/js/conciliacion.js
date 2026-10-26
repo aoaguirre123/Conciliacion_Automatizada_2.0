@@ -56,9 +56,15 @@ function iniciar(form) {
         cajas.forEach(function (caja) {
             var e = caja.querySelector('input[type="file"]');
             var detalle = caja.querySelector('[data-detalle]');
-            var archivo = e.files && e.files[0];
+            var lista = e.files ? Array.prototype.slice.call(e.files) : [];
+            var archivo = lista[0];
             caja.classList.toggle('cargado', !!archivo);
-            detalle.textContent = archivo ? archivo.name + ' (' + tamano(archivo.size) + ')' : detalle.getAttribute('data-vacio');
+            if (lista.length > 1) {
+                var peso = lista.reduce(function (suma, a) { return suma + a.size; }, 0);
+                detalle.textContent = lista.length + ' archivos: ' + lista.map(function (a) { return a.name; }).join(', ') + ' (' + tamano(peso) + ')';
+            } else {
+                detalle.textContent = archivo ? archivo.name + ' (' + tamano(archivo.size) + ')' : detalle.getAttribute('data-vacio');
+            }
             var pastilla = form.querySelector('[data-pastilla="' + e.id + '"]');
             if (pastilla) pastilla.classList.toggle('cargado', !!archivo);
             if (archivo) cantidad += 1;

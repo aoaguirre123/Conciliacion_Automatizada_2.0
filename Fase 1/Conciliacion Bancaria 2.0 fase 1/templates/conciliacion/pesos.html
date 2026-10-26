@@ -25,8 +25,7 @@
 </div>
 {% endif %}
 
-<form method="post" enctype="multipart/form-data" class="flujo" data-analisis
-      data-alguno="credito,debito,prepago" data-alguno-texto="Carga al menos una liquidación de Transbank.">
+<form method="post" enctype="multipart/form-data" class="flujo" data-analisis>
     {% csrf_token %}
 
     <article class="tarjeta">
@@ -40,24 +39,13 @@
 
         <div class="grupo">
             <div class="grupo__cabeza">
-                <h3>Registro del hotel y banco</h3>
-                <p class="grupo__ayuda">El BORDERO es la base del cruce. La cartola es opcional y sirve para verificar que cada abono llegó a la cuenta.</p>
-            </div>
-            <div class="casillas casillas--dos">
-                {% include "conciliacion/_archivo.html" with campo="bordero" titulo="BORDERO" icono="book-open" acepta=".xls,.xlsx" ayuda="Cargos de débitos y créditos del FrontOffice" obligatorio=True %}
-                {% include "conciliacion/_archivo.html" with campo="cartola" titulo="Cartola bancaria" icono="landmark" acepta=".xls,.xlsx" ayuda="Movimientos de la cuenta en pesos" %}
-            </div>
-        </div>
-
-        <div class="grupo">
-            <div class="grupo__cabeza">
-                <h3>Liquidaciones de Transbank</h3>
-                <p class="grupo__ayuda">Reporte «Abonos por día» de cada medio de pago. Carga al menos uno.</p>
+                <h3>Registro del hotel, Transbank y banco</h3>
+                <p class="grupo__ayuda">El BORDERO es la base del cruce. En Transbank puedes cargar uno o varios reportes «Abonos por día»: separados por medio de pago o un solo archivo con crédito, débito y prepago juntos; el medio se toma de cada venta y los archivos o ventas repetidos se cuentan una sola vez. La cartola es opcional y sirve para verificar que cada abono llegó a la cuenta.</p>
             </div>
             <div class="casillas">
-                {% include "conciliacion/_archivo.html" with campo="credito" titulo="Crédito" icono="credit-card" acepta=".xls,.xlsx" ayuda="Abonos por día, medio de pago Crédito" %}
-                {% include "conciliacion/_archivo.html" with campo="debito" titulo="Débito" icono="credit-card" acepta=".xls,.xlsx" ayuda="Abonos por día, medio de pago Débito" %}
-                {% include "conciliacion/_archivo.html" with campo="prepago" titulo="Prepago" icono="credit-card" acepta=".xls,.xlsx" ayuda="Abonos por día, medio de pago Prepago" %}
+                {% include "conciliacion/_archivo.html" with campo="bordero" titulo="BORDERO" icono="book-open" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Cargos de débitos y créditos del FrontOffice" obligatorio=True %}
+                {% include "conciliacion/_archivo.html" with campo="transbank" titulo="Transbank" icono="credit-card" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Abonos por día: crédito, débito y prepago (uno o varios archivos)" obligatorio=True multiple=True %}
+                {% include "conciliacion/_archivo.html" with campo="cartola" titulo="Cartola bancaria" icono="landmark" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="BancoEstado o Banco de Chile, tal como se descarga" %}
             </div>
         </div>
     </article>
@@ -68,14 +56,12 @@
                 <span class="paso" aria-hidden="true">2</span>
                 <div>
                     <h2>Analiza</h2>
-                    <p class="tarjeta__bajada"><span data-contador>0</span> de <span data-total>5</span> archivos cargados</p>
+                    <p class="tarjeta__bajada"><span data-contador>0</span> de <span data-total>3</span> archivos cargados</p>
                 </div>
             </div>
             <ul class="pastillas" aria-label="Archivos cargados">
                 <li class="pastilla" data-pastilla="bordero"><span class="pastilla__punto" aria-hidden="true"></span>BORDERO</li>
-                <li class="pastilla" data-pastilla="credito"><span class="pastilla__punto" aria-hidden="true"></span>Crédito</li>
-                <li class="pastilla" data-pastilla="debito"><span class="pastilla__punto" aria-hidden="true"></span>Débito</li>
-                <li class="pastilla" data-pastilla="prepago"><span class="pastilla__punto" aria-hidden="true"></span>Prepago</li>
+                <li class="pastilla" data-pastilla="transbank"><span class="pastilla__punto" aria-hidden="true"></span>Transbank</li>
                 <li class="pastilla" data-pastilla="cartola"><span class="pastilla__punto" aria-hidden="true"></span>Cartola</li>
             </ul>
         </div>

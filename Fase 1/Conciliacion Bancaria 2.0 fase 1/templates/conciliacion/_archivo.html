@@ -1,6 +1,6 @@
 <div class="archivo" data-archivo>
     <label class="archivo__zona">
-        <input class="archivo__entrada" type="file" id="{{ campo }}" name="{{ campo }}" accept="{{ acepta }}"
+        <input class="archivo__entrada" type="file" id="{{ campo }}" name="{{ campo }}" accept="{{ acepta }}"{% if multiple %} multiple{% endif %}
                data-nombre="{{ titulo }}"{% if requiere %} data-requiere="{{ requiere }}"{% endif %}{% if obligatorio %} data-obligatorio{% endif %}>
         <span class="archivo__icono"><i data-lucide="{{ icono }}" aria-hidden="true"></i></span>
         <span class="archivo__nombre">{{ titulo }}{% if obligatorio %} <span class="archivo__marca">Obligatorio</span>{% endif %}</span>

@@ -32,6 +32,17 @@
         {% endif %}
     {% endif %}
 
+    {% if resumen.archivos_repetidos or resumen.ventas_repetidas %}
+    <div class="aviso aviso--info" role="status">
+        <i data-lucide="copy" aria-hidden="true"></i>
+        <div>
+            <strong>Se ignoraron datos repetidos de Transbank</strong>
+            {% if resumen.archivos_repetidos %}<p>Archivo{{ resumen.archivos_repetidos|length|pluralize }} cargado{{ resumen.archivos_repetidos|length|pluralize }} más de una vez: {{ resumen.archivos_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
+            {% if resumen.ventas_repetidas %}<p>{{ resumen.ventas_repetidas }} venta{{ resumen.ventas_repetidas|pluralize }} venía{{ resumen.ventas_repetidas|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     {% if resumen.fuera_periodo %}
     <div class="aviso aviso--info" role="status">
         <i data-lucide="calendar-range" aria-hidden="true"></i>
@@ -93,7 +104,7 @@
                             {% if m.por_revisar %}<span class="diferencia diferencia--error"><i data-lucide="triangle-alert" aria-hidden="true"></i>{{ m.por_revisar|floatformat:"0g" }}</span>{% else %}<span class="diferencia diferencia--cero">0</span>{% endif %}
                         </td>
                         <td>
-                            {% if m.banco == "encontrado" %}<span class="etiqueta etiqueta--ok">Recibido</span><span class="tabla__sub">{{ m.fecha_banco }}</span>
+                            {% if m.banco == "encontrado" %}<span class="etiqueta etiqueta--ok">Recibido</span><span class="tabla__sub">{{ m.fecha_banco }}{% if m.nota_banco %} · {{ m.nota_banco }}{% endif %}</span>
                             {% elif m.banco == "no_encontrado" %}<span class="etiqueta etiqueta--error">No encontrado</span>
                             {% else %}<span class="etiqueta">Sin cartola</span>{% endif %}
                         </td>

@@ -37,7 +37,9 @@ def dolares(request):
         errores = logica.validar_archivos(archivos)
         if not errores:
             try:
-                resultado, reportes = logica.procesar(archivos)
+                resultado, reportes = logica.procesar(archivos, identificar=bines.identificar)
+            except logica.ArchivoNoValido as exc:
+                errores = [str(exc)]
             except Exception as exc:  # se muestra en pantalla y queda en el log
                 logger.exception("Error en la conciliación en dólares")
                 errores = [f"No se pudieron leer los archivos: {exc}"]
@@ -56,8 +58,8 @@ def _validar_clp(archivos):
     errores = []
     if not archivos["bordero"]:
         errores.append("Carga el BORDERO: es la base de la conciliación en pesos.")
-    if not any(archivos[c] for c in logica_clp.ARCHIVOS_TBK):
-        errores.append("Carga al menos una liquidación de Transbank (crédito, débito o prepago).")
+    if not archivos["transbank"] and not any(archivos.get(c) for c in logica_clp.ARCHIVOS_TBK):
+        errores.append("Carga al menos un archivo «Abonos por día» de Transbank.")
     return errores
 
 
@@ -66,6 +68,8 @@ def pesos(request):
     contexto = {}
     if request.method == "POST":
         archivos = {campo: request.FILES.get(campo) for campo in logica_clp.NOMBRES_ARCHIVO}
+        # Transbank acepta uno o varios archivos: separados por medio de pago o todos juntos.
+        archivos["transbank"] = request.FILES.getlist("transbank")
         errores = _validar_clp(archivos)
         if not errores:
             try:

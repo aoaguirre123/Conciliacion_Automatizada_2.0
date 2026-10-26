@@ -73,13 +73,15 @@ LANGUAGE_CODE = "es-cl"
 TIME_ZONE = "America/Santiago"
 USE_I18N = True
 USE_TZ = True
+# Separador de miles con punto y decimales con coma (ver config/formatos/es_CL/formats.py).
+FORMAT_MODULE_PATH = ["config.formatos"]
 
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # Versión visible en el pie de página y usada para refrescar CSS/JS en el navegador.
-APP_VERSION = "3.1"
+APP_VERSION = "3.3.0"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

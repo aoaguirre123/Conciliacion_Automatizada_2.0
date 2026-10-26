@@ -29,10 +29,13 @@ def _a_json(valor):
 
 
 def _descripcion_archivos(archivos, nombres):
-    return [
-        {"campo": campo, "etiqueta": nombres.get(campo, campo), "nombre": archivo.name, "tamano": archivo.size}
-        for campo, archivo in archivos.items() if archivo
-    ]
+    descripcion = []
+    for campo, valor in archivos.items():
+        for archivo in (valor if isinstance(valor, (list, tuple)) else [valor]):
+            if archivo:
+                descripcion.append({"campo": campo, "etiqueta": nombres.get(campo, campo),
+                                    "nombre": archivo.name, "tamano": archivo.size})
+    return descripcion
 
 
 @transaction.atomic
