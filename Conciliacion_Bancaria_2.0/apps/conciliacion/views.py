@@ -7,17 +7,12 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from . import bines, logica, logica_clp, registro
-from .dolar import obtener_serie_dolar
+from .dolar import dolar_para, fuente_elegida, fuente_otra
 from .models import Conciliacion, Reporte
 
 logger = logging.getLogger(__name__)
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-def _dolar():
-    serie = obtener_serie_dolar()
-    return serie[0] if serie else None
 
 
 def _guardar_y_mostrar(request, moneda, archivos, nombres, resultado, reportes, cuadrado, por_revisar):
@@ -30,8 +25,15 @@ def _guardar_y_mostrar(request, moneda, archivos, nombres, resultado, reportes, 
 # Conciliación en dólares
 # ---------------------------------------------------------------------------
 @login_required
+def dolar(request):
+    """Recuadro del dólar, que las páginas piden aparte para no esperar a la API al cargar."""
+    plantilla = "core/_dolar_tarjeta.html" if request.GET.get("vista") == "tarjeta" else "conciliacion/_dolar_caja.html"
+    return render(request, plantilla, dolar_para(request))
+
+
+@login_required
 def dolares(request):
-    contexto = {"dolar_hoy": _dolar()}
+    contexto = {"fuente_otra": fuente_otra(fuente_elegida(request))}
     if request.method == "POST":
         archivos = {f"archivo{n}": request.FILES.get(f"archivo{n}") for n in range(1, 8)}
         errores = logica.validar_archivos(archivos)

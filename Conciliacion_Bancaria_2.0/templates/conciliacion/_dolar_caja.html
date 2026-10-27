@@ -1,0 +1,13 @@
+<i data-lucide="circle-dollar-sign" aria-hidden="true"></i>
+<div>
+    {% if cargando %}
+    <span class="dolar__etiqueta" data-dolar-cargando>Cargando dólar observado…</span>
+    {% elif dolar_hoy %}
+    <span class="dolar__etiqueta">Dólar observado del {{ dolar_hoy.fecha }}</span>
+    <span class="dolar__valor num">$ {{ dolar_hoy.valor|floatformat:"2g" }}</span>
+    <span class="dolar__etiqueta">Fuente: {{ dolar_hoy.nombre }}{% if dolar_hoy.respaldo_de %} ({{ dolar_hoy.respaldo_de }} no responde){% endif %}</span>
+    {% else %}
+    <span class="dolar__etiqueta">Dólar observado no disponible en este momento</span>
+    {% endif %}
+</div>
+{% include "partials/cambiar_fuente_dolar.html" %}

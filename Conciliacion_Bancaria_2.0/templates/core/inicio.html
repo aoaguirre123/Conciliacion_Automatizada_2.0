@@ -50,14 +50,8 @@
         </section>
     </div>
 
-    <aside class="tarjeta">
-        <h2>Dólar observado</h2>
-        {% if dolar_hoy %}
-            <p class="valor-dolar num">$ {{ dolar_hoy.valor|floatformat:"2g" }}</p>
-            <p class="fuente">Valor del {{ dolar_hoy.fecha }}. Fuente: mindicador.cl</p>
-        {% else %}
-            <p class="fuente">No se pudo obtener el valor en este momento.</p>
-        {% endif %}
+    <aside class="tarjeta" data-dolar="{% url 'conciliacion:dolar' %}?vista=tarjeta" aria-live="polite">
+        {% include "core/_dolar_tarjeta.html" with cargando=True %}
     </aside>
 </div>
 {% endblock %}

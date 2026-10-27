@@ -6,6 +6,7 @@ app_name = "conciliacion"
 
 urlpatterns = [
     path("", views.dolares, name="dolares"),
+    path("dolar/", views.dolar, name="dolar"),
     path("pesos/", views.pesos, name="pesos"),
     path("historial/", views.historial, name="historial"),
     path("historial/<int:pk>/", views.detalle, name="detalle"),

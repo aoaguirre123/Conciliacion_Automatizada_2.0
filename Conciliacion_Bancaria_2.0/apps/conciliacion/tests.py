@@ -393,7 +393,7 @@ class PantallasTests(TestCase):
         respuesta = self.client.post("/usuarios/login/", {"email": "PRUEBA@hotel.cl", "password": "Clave-Prueba-2026"})
         self.assertEqual(respuesta.status_code, 302)
 
-    @mock.patch("apps.conciliacion.views.obtener_serie_dolar", return_value=[])  # sin internet
+    @mock.patch("apps.conciliacion.dolar.obtener_serie_dolar", return_value=[])  # sin internet
     def test_conciliacion_usd_se_guarda_en_el_historial(self, _dolar):
         self.client.force_login(self.usuario)
         archivos = {campo: a for campo, a in archivos_usd(formato_tarjeta="xlsx").items() if a}

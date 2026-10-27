@@ -569,6 +569,44 @@ input {
     font-weight: 700;
 }
 
+/* Botón con solo un ícono para cambiar la fuente del dólar. */
+.cambiar-fuente {
+    align-items: center;
+    align-self: center;
+    background: none;
+    border: 0;
+    border-radius: var(--radio-md);
+    color: var(--tinta-suave);
+    cursor: pointer;
+    display: inline-flex;
+    justify-content: center;
+    padding: 0.35rem;
+}
+
+[data-dolar][aria-busy="true"] {
+    opacity: 0.6;
+}
+
+.cambiar-fuente:hover,
+.cambiar-fuente:focus-visible {
+    background: var(--linea);
+    color: var(--azul-900);
+}
+
+.dolar .cambiar-fuente {
+    border-left: 1px solid var(--linea);
+    border-radius: 0;
+    margin-left: 0.25rem;
+    padding-left: 0.75rem;
+}
+
+.dolar .cambiar-fuente svg,
+.cambiar-fuente svg {
+    color: currentColor;
+    height: 16px;
+    width: 16px;
+}
+
 /* 6. Tablas ------------------------------------------------------------------ */
 .tabla-marco {
     border: 1px solid var(--linea);
@@ -1091,6 +1129,25 @@ input {
     grid-template-columns: minmax(0, 1fr) 300px;
 }
 
+/* Los accesos y la tarjeta del dólar comparten fila para tener la misma altura. */
+.inicio > .flujo {
+    display: contents;
+}
+
+.inicio > .flujo > * {
+    grid-column: 1;
+}
+
+.inicio > aside {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.inicio > .flujo > .accesos,
+.inicio > aside {
+    align-self: stretch;
+}
+
 .acceso {
     background: var(--superficie);
     border: 1px solid var(--linea-fuerte);
@@ -1324,6 +1381,11 @@ input {
 
     .inicio {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .inicio > aside {
+        grid-column: 1;
+        grid-row: auto;
     }
 }
 
