@@ -40,12 +40,15 @@ def _descripcion_archivos(archivos, nombres):
 
 @transaction.atomic
 def guardar(moneda, usuario, archivos, nombres, resultado, reportes, cuadrado, por_revisar):
+    desde, hasta = resultado.get("periodo") or (None, None)
     registro = Conciliacion.objects.create(
         moneda=moneda,
         usuario=usuario if getattr(usuario, "is_authenticated", False) else None,
         archivos=_descripcion_archivos(archivos, nombres),
         cuadrado=bool(cuadrado),
         monto_por_revisar=Decimal(str(round(float(por_revisar or 0), 2))),
+        desde=desde,
+        hasta=hasta,
         resultado=json.loads(json.dumps(_a_json(resultado))),
     )
     Reporte.objects.bulk_create([

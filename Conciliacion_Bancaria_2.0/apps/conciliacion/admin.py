@@ -13,9 +13,9 @@ class ReporteEnLinea(admin.TabularInline):
 
 @admin.register(Conciliacion)
 class ConciliacionAdmin(admin.ModelAdmin):
-    list_display = ("id", "moneda", "creada", "usuario", "cuadrado", "monto_por_revisar")
+    list_display = ("id", "moneda", "creada", "desde", "hasta", "usuario", "cuadrado", "monto_por_revisar")
     list_filter = ("moneda", "cuadrado")
-    readonly_fields = ("moneda", "creada", "usuario", "archivos", "cuadrado", "monto_por_revisar", "resultado")
+    readonly_fields = ("moneda", "creada", "desde", "hasta", "usuario", "archivos", "cuadrado", "monto_por_revisar", "resultado")
     inlines = [ReporteEnLinea]
 
 

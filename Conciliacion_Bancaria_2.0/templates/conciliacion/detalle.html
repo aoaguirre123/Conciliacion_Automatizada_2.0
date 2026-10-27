@@ -14,6 +14,7 @@
         <h1>Conciliación en {{ conciliacion.get_moneda_display|lower }} N° {{ conciliacion.pk }}</h1>
         <p class="encabezado__bajada">
             {{ conciliacion.creada|date:"l j \d\e F \d\e Y, H:i" }}{% if conciliacion.usuario %}, por {{ conciliacion.usuario.get_full_name|default:conciliacion.usuario.username }}{% endif %}.
+            {% if conciliacion.hasta %}Período conciliado: {% include "conciliacion/_periodo.html" with c=conciliacion %}.{% endif %}
         </p>
     </div>
     <a class="boton boton--secundario" href="{% if conciliacion.moneda == 'CLP' %}{% url 'conciliacion:pesos' %}{% else %}{% url 'conciliacion:dolares' %}{% endif %}">
