@@ -171,6 +171,15 @@ def _buscar_fila(raw, condicion):
 # ---------------------------------------------------------------------------
 # Lectura de archivos
 # ---------------------------------------------------------------------------
+def periodo_del_encabezado(raw):
+    """(desde, hasta) de la fila «Periodo de: 04/09/2026 hasta 07/09/2026» del FrontOffice, o None."""
+    fila = _buscar_fila(raw.head(30), lambda f: "Periodo de:" in f)
+    if fila is None:
+        return None
+    fechas = [f for f in map(_fecha, raw.iloc[fila].tolist()) if f]
+    return (min(fechas), max(fechas)) if len(fechas) >= 2 else None
+
+
 def leer_bordero(archivo):
     """Pagos con tarjeta en pesos del BORDERO, sin anulaciones compensadas."""
     es_encabezado = lambda f: "Cod. Deb." in f and "Documento" in f and "Valor" in f  # noqa: E731
@@ -181,13 +190,7 @@ def leer_bordero(archivo):
     encabezado = [_texto(v) for v in raw.iloc[fila].tolist()]
     col = {nombre: encabezado.index(nombre) for nombre in ("Cod. Deb.", "Descripción", "Valor", "Documento", "Fecha", "Cuenta", "Usuario") if nombre in encabezado}
 
-    periodo = None
-    fila_periodo = _buscar_fila(raw, lambda f: "Periodo de:" in f)
-    if fila_periodo is not None:
-        fechas = [_fecha(v) for v in raw.iloc[fila_periodo].tolist()]
-        fechas = [f for f in fechas if f]
-        if len(fechas) >= 2:
-            periodo = (min(fechas), max(fechas))
+    periodo = periodo_del_encabezado(raw)
 
     pagos = []
     for i in range(fila + 1, len(raw)):
@@ -698,6 +701,7 @@ def procesar(archivos, identificar=identificar_local):
     observaciones.sort(key=lambda f: (orden[f["estado"]], f["medio"], f["fecha"]))
 
     resultado = {
+        "periodo": periodo,
         "resumen": resumen,
         "medios": medios,
         "total_medios": total,

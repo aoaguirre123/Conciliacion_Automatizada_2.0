@@ -1,0 +1,1 @@
+{% if not c.hasta %}—{% elif c.desde == c.hasta %}{{ c.hasta|date:"d-m-Y" }}{% else %}{{ c.desde|date:"d-m-Y" }} al {{ c.hasta|date:"d-m-Y" }}{% endif %}

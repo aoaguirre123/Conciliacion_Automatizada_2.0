@@ -1,0 +1,12 @@
+<div class="cabeza-con-accion">
+    <h2>Dólar observado</h2>
+    {% include "partials/cambiar_fuente_dolar.html" %}
+</div>
+{% if cargando %}
+    <p class="fuente" data-dolar-cargando>Cargando el valor…</p>
+{% elif dolar_hoy %}
+    <p class="valor-dolar num">$ {{ dolar_hoy.valor|floatformat:"2g" }}</p>
+    <p class="fuente">Valor del {{ dolar_hoy.fecha }}. Fuente: {{ dolar_hoy.nombre }}{% if dolar_hoy.respaldo_de %} ({{ dolar_hoy.respaldo_de }} no responde){% endif %}</p>
+{% else %}
+    <p class="fuente">No se pudo obtener el valor en este momento.</p>
+{% endif %}

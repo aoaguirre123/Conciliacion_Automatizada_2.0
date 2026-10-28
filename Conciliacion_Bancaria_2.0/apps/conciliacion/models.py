@@ -16,6 +16,8 @@ class Conciliacion(models.Model):
     archivos = models.JSONField(default=list, help_text="Nombre y tamaño de cada archivo analizado.")
     cuadrado = models.BooleanField(default=False)
     monto_por_revisar = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    desde = models.DateField(null=True, blank=True, help_text="Primer día del período conciliado.")
+    hasta = models.DateField(null=True, blank=True, help_text="Fecha de corte: último día del período conciliado.")
     resultado = models.JSONField(default=dict, help_text="Datos que se muestran en pantalla.")
 
     class Meta:

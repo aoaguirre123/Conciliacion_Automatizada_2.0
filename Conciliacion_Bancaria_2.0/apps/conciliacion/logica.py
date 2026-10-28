@@ -502,6 +502,23 @@ def _resumen_dolar():
 # ---------------------------------------------------------------------------
 # Punto de entrada
 # ---------------------------------------------------------------------------
+def _periodo(archivos, lector, identificar=identificar_local):
+    """(desde, hasta) de la conciliación, o None si no hay fechas.
+
+    Sale de la fila «Periodo de: … hasta …» del ERP. Si el ERP no la trae, se usa la primera
+    y la última fecha de sus movimientos o, sin ERP, las fechas de venta de Transbank.
+    """
+    fechas = []
+    if archivos["archivo1"]:
+        periodo = logica_clp.periodo_del_encabezado(lector.hojas(archivos["archivo1"])[0][1])
+        if periodo:
+            return periodo
+        fechas = lector.leer(archivos["archivo1"], COLS_ERP)["Unnamed: 10"].map(logica_clp._fecha).dropna().tolist()
+    if not fechas and archivos["archivo7"]:
+        fechas = leer_transbank(archivos["archivo7"], lector, identificar)[0]["Unnamed: 2"].map(logica_clp._fecha).dropna().tolist()
+    return (min(fechas), max(fechas)) if fechas else None
+
+
 def validar_archivos(archivos):
     """Errores de combinación de archivos (los mismos que avisa la pantalla)."""
     errores = []
@@ -537,6 +554,7 @@ def procesar(archivos, identificar=identificar_local):
         resultado["data_dolar"] = _resumen_dolar()
         resultado["resumen"] = _resumen_proceso(resultado["data_dolar"])
         resultado["archivos_usados"] = [NOMBRES_ARCHIVO[c] for c, a in archivos.items() if a]
+        resultado["periodo"] = _periodo(archivos, lector, identificar)
 
         reportes = [
             ("ubicadas", "Transacciones ubicadas", "Abonadas y sus diferencias contra cada cartola.",

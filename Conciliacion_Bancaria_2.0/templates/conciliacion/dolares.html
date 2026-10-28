@@ -13,15 +13,9 @@
         <h1>Conciliación en dólares</h1>
         <p class="encabezado__bajada">Cruza el ERP con Transbank, las cartolas de tarjetas y el banco. Cada análisis queda guardado en el <a href="{% url 'conciliacion:historial' %}">historial</a>.</p>
     </div>
-    {% if dolar_hoy %}
-    <div class="dolar">
-        <i data-lucide="circle-dollar-sign" aria-hidden="true"></i>
-        <div>
-            <span class="dolar__etiqueta">Dólar observado del {{ dolar_hoy.fecha }}</span>
-            <span class="dolar__valor num">$ {{ dolar_hoy.valor|floatformat:"2g" }}</span>
-        </div>
+    <div class="dolar" data-dolar="{% url 'conciliacion:dolar' %}?vista=caja" aria-live="polite">
+        {% include "conciliacion/_dolar_caja.html" with cargando=True %}
     </div>
-    {% endif %}
 </header>
 
 {% if errores %}

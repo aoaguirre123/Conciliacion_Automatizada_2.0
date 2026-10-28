@@ -25,6 +25,7 @@
                     <th scope="col">N°</th>
                     <th scope="col">Fecha</th>
                     <th scope="col">Tipo</th>
+                    <th scope="col">Período</th>
                     <th scope="col">Resultado</th>
                     <th scope="col">Usuario</th>
                     <th scope="col">Descargas</th>
@@ -37,6 +38,7 @@
                     <th scope="row" class="num">{{ c.pk }}</th>
                     <td class="num">{{ c.creada|date:"d-m-Y H:i" }}</td>
                     <td>{{ c.get_moneda_display }}</td>
+                    <td class="num">{% include "conciliacion/_periodo.html" %}</td>
                     <td>
                         {% if c.cuadrado %}<span class="etiqueta etiqueta--ok">Cuadrado</span>
                         {% else %}<span class="etiqueta etiqueta--error">Por revisar {{ c.simbolo }} {{ c.monto_por_revisar|floatformat:"-2g" }}</span>{% endif %}
