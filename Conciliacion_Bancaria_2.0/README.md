@@ -59,6 +59,35 @@ Los archivos subidos se procesan temporalmente durante la solicitud y no se guar
 como archivos en el servidor; el historial y los Excel generados se almacenan en la
 base de datos.
 
+## Despliegue en Railway
+
+En Railway crea un proyecto desde el repositorio y configura como **Root Directory**
+`Conciliacion_Bancaria_2.0`. El proyecto incluye `Procfile` y `railway.toml`; Railway
+instalará `requirements.txt`, recopilará los estáticos y ejecutará Gunicorn.
+
+Configura estas variables:
+
+- `DJANGO_SECRET_KEY`: clave privada aleatoria.
+- `DJANGO_DEBUG=0`.
+- `DATABASE_URL`: URL de PostgreSQL de un servicio PostgreSQL de Railway o de otro
+  proveedor administrado.
+- `DJANGO_ALLOWED_HOSTS`: opcional; Railway agrega automáticamente
+  `RAILWAY_PUBLIC_DOMAIN` cuando el dominio está habilitado.
+- `DJANGO_CSRF_TRUSTED_ORIGINS`: opcional; usa la URL completa `https://...` si
+  agregas un dominio personalizado.
+
+Después del primer despliegue, ejecuta las migraciones desde una terminal con la misma
+`DATABASE_URL`:
+
+```
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+SQLite puede utilizarse únicamente para una prueba efímera. Para Railway no se
+recomienda como almacenamiento de producción salvo que se configure un volumen
+persistente y un `DATABASE_URL` con la ruta correspondiente.
+
 ## Usuarios
 
 `db.sqlite3` es la base del proyecto anterior, así que los usuarios existentes siguen

@@ -8,7 +8,8 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 ON_VERCEL = os.environ.get("VERCEL", "").lower() == "1"
-DEBUG = os.environ.get("DJANGO_DEBUG", "0" if ON_VERCEL else "1") == "1"
+ON_RAILWAY = bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+DEBUG = os.environ.get("DJANGO_DEBUG", "0" if ON_VERCEL or ON_RAILWAY else "1") == "1"
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
     "dev-P(ZyLeDl0tx^UG1ZL_fVypVGoeb7bjh9+cP_8SmlnDKCx9M@j=",
@@ -24,6 +25,9 @@ if ON_VERCEL:
     if vercel_url:
         configured_hosts.append(vercel_url.split(":", 1)[0])
     configured_hosts.append(".vercel.app")
+railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+if railway_domain:
+    configured_hosts.append(railway_domain.split(":", 1)[0])
 ALLOWED_HOSTS = configured_hosts or ["127.0.0.1", "localhost"]
 
 csrf_origins = [
@@ -35,6 +39,8 @@ if ON_VERCEL:
     vercel_url = os.environ.get("VERCEL_URL", "")
     if vercel_url:
         csrf_origins.append(f"https://{vercel_url.split(':', 1)[0]}")
+if railway_domain:
+    csrf_origins.append(f"https://{railway_domain.split(':', 1)[0]}")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
