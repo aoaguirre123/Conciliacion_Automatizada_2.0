@@ -50,6 +50,11 @@ SQLite se conserva como alternativa para desarrollo local, pero no debe usarse e
 Vercel: el sistema de archivos de las funciones es efímero y no conserva usuarios,
 historial ni reportes entre ejecuciones.
 
+Para una demostración temporal sin `DATABASE_URL`, el proyecto copia la base SQLite
+incluida al directorio temporal escribible de Vercel. Esta modalidad no garantiza
+persistencia entre invocaciones o nuevos despliegues; para uso real se debe configurar
+PostgreSQL mediante `DATABASE_URL`.
+
 Los archivos subidos se procesan temporalmente durante la solicitud y no se guardan
 como archivos en el servidor; el historial y los Excel generados se almacenan en la
 base de datos.

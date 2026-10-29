@@ -1,5 +1,6 @@
 """Configuración del sistema de conciliación bancaria - Hotel Plaza San Francisco."""
 import os
+import shutil
 from pathlib import Path
 
 import dj_database_url
@@ -78,9 +79,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+if ON_VERCEL and not os.environ.get("DATABASE_URL"):
+    # Vercel monta el código como solo lectura; el demo SQLite necesita una
+    # copia temporal para poder crear sesiones y guardar conciliaciones.
+    bundled_database = BASE_DIR / "db.sqlite3"
+    demo_database = Path("/tmp/conciliacion-demo.sqlite3")
+    if bundled_database.exists() and not demo_database.exists():
+        demo_database.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bundled_database, demo_database)
+    database_url = f"sqlite:///{demo_database}"
+else:
+    database_url = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
+
 DATABASES = {
     "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        default=database_url,
         conn_max_age=600,
     )
 }
