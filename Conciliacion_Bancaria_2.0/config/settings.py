@@ -140,3 +140,13 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "loggers": {"apps": {"handlers": ["console"], "level": "INFO"}},
 }
+
+# Despliegue en Vercel (HTTPS detrás de un proxy)
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.vercel.app",
+]
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+if not DEBUG:
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
