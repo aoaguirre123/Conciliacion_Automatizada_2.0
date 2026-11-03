@@ -424,3 +424,36 @@ class PantallasTests(TestCase):
         self.assertContains(detalle, "Se ignoraron datos repetidos de Transbank")
         self.assertContains(detalle, "tbk_copia.xlsx")
         self.assertContains(detalle, "38.000")
+        corte = '<strong class="fecha-periodo">07-09-2026</strong>'
+        self.assertContains(detalle, corte)
+        self.assertContains(self.client.get("/conciliacion/historial/"), corte)
+
+    def test_identifica_cada_archivo_soltado_en_el_recuadro(self):
+        self.client.force_login(self.usuario)
+        respuesta = self.client.post("/conciliacion/pesos/identificar/", {"archivos": [
+            cartola_clp([]),
+            transbank("tbk.xlsx", VENTAS_MIXTAS),
+            bordero_clp(PAGOS_MIXTOS),
+            xlsx("otro.xlsx", {"Hoja1": [["nada", "que", "ver"]]}),
+            texto("vacio.csv", ""),
+            transbank("tbk_usd.xlsx", VENTAS_MIXTAS, moneda="Dólar"),
+        ]})
+        archivos = respuesta.json()["archivos"]
+        self.assertEqual([a["tipo"] for a in archivos], ["cartola", "transbank", "bordero", None, None, None])
+        self.assertIn("dólares", archivos[-1]["motivo"])
+
+    def test_identifica_cada_archivo_soltado_en_dolares(self):
+        self.client.force_login(self.usuario)
+        usd = archivos_usd()
+        visa = xlsx("visa.xls", {"Sheet 1": [
+            ["HOTEL PLAZA SAN FRANCISCO"],
+            ["Posición Por Clientes en 04/12/2025 - Sin Inclusión de Anticipos"],
+            ["Cliente:", "96.689.310//9 - - TRANSBANK - TARJETA VISA US$"],
+        ]})
+        respuesta = self.client.post("/conciliacion/identificar/", {"archivos": [
+            usd["archivo1"], usd["archivo7"], usd["archivo6"], visa,
+            cartola_clp([]), transbank("tbk_clp.xlsx", VENTAS_MIXTAS),
+        ]})
+        archivos = respuesta.json()["archivos"]
+        self.assertEqual([a["tipo"] for a in archivos], ["archivo1", "archivo7", "archivo6", "archivo4", None, None])
+        self.assertIn("pesos", archivos[-1]["motivo"])

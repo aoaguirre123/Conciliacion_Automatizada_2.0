@@ -519,6 +519,73 @@ def _periodo(archivos, lector, identificar=identificar_local):
     return (min(fechas), max(fechas)) if fechas else None
 
 
+# ---------------------------------------------------------------------------
+# Reconocimiento de archivos (recuadro único de carga)
+# ---------------------------------------------------------------------------
+# marca en «Cliente: … TRANSBANK - TARJETA AMEX US$» de la cartola de tarjeta -> campo del formulario
+MARCA_A_CAMPO = [("amex", "archivo2"), ("american", "archivo2"), ("diner", "archivo3"), ("dinner", "archivo3"),
+                 ("visa", "archivo4"), ("master", "archivo5")]
+PAGOS_US = ("amex us$", "dinners us$", "diners us$", "master card us$", "visa us$")
+
+
+def _valor_tras(filas, etiqueta):
+    """Valor de «<etiqueta>:» en el encabezado: a su derecha (liquidación antigua) o, si a la derecha
+    hay otra etiqueta, en la fila siguiente (reporte «Abonos por día»)."""
+    for i, fila in enumerate(filas):
+        for j, celda in enumerate(fila):
+            if celda.startswith(etiqueta):
+                derecha = next((c for c in fila[j + 1:] if c), "")
+                if derecha and not derecha.endswith(":"):
+                    return derecha
+                return filas[i + 1][j] if i + 1 < len(filas) and j < len(filas[i + 1]) else ""
+    return ""
+
+
+def clasificar(archivo):
+    """(campo del formulario 'archivo1'…'archivo7', '') según el contenido, o (None, motivo)."""
+    try:
+        hojas = lectura.leer_hojas(archivo)
+    except lectura.FormatoNoSoportado as exc:
+        return None, str(exc)
+    tablas = [[[lectura.normalizar(v) for v in df.iloc[i].tolist()] for i in range(len(df))] for _, df in hojas]
+
+    for filas in tablas:
+        encabezado = filas[:80]
+        celdas = [c for fila in encabezado for c in fila if c]
+
+        # Cartola de tarjeta: «Posición Por Clientes» del sistema de cuentas por cobrar.
+        if any(c.startswith("posicion por clientes") for c in celdas):
+            cliente = " ".join(c for c in celdas if "tarjeta" in c)
+            campo = next((campo for marca, campo in MARCA_A_CAMPO if marca in cliente), None)
+            if campo:
+                return campo, ""
+            return None, "Es una cartola de tarjeta, pero no se reconoce la marca (Amex, Diners, Visa o Mastercard)."
+
+        # Transbank: liquidación antigua o reporte «Abonos por día».
+        if any(c.startswith("abono calculado") for c in celdas) or any(
+            "fecha de venta" in fila and "medio de pago" in fila for fila in encabezado
+        ):
+            moneda = _valor_tras(encabezado, "moneda")
+            if "peso" in moneda or "clp" in moneda:
+                return None, "Es un reporte de Transbank en pesos: cárgalo en la Conciliación en pesos."
+            return "archivo7", ""
+
+        # Cartola del banco: fila con Fecha y una columna de abonos, de una cuenta en dólares
+        # («Abonos (USD)» o «Moneda: Dólar Americano»). BancoEstado no indica moneda: es la cuenta en pesos.
+        fila_banco = next((f for f in encabezado if "fecha" in f and any("abono" in c for c in f)), None)
+        if fila_banco:
+            moneda = _valor_tras(encabezado, "moneda")
+            if any("usd" in c for c in fila_banco) or "dolar" in moneda or "usd" in moneda:
+                return "archivo6", ""
+            return None, "Es una cartola en pesos: cárgala en la Conciliación en pesos."
+
+        # ERP (BORDERO del FrontOffice): pagos con tarjeta en dólares.
+        if any(any(pago in c for pago in PAGOS_US) for fila in filas for c in fila):
+            return "archivo1", ""
+
+    return None, "No parece un ERP, un reporte de Transbank, una cartola del banco ni una cartola de tarjeta en dólares."
+
+
 def validar_archivos(archivos):
     """Errores de combinación de archivos (los mismos que avisa la pantalla)."""
     errores = []

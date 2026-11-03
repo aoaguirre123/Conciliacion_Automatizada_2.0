@@ -4,6 +4,7 @@
 {% block titulo %}Conciliación en dólares{% endblock %}
 
 {% block scripts %}
+<script src="{% static 'js/soltar.js' %}?v={{ APP_VERSION }}" defer></script>
 <script src="{% static 'js/conciliacion.js' %}?v={{ APP_VERSION }}" defer></script>
 {% endblock %}
 
@@ -38,32 +39,35 @@
             <span class="paso" aria-hidden="true">1</span>
             <div>
                 <h2>Carga los archivos</h2>
-                <p class="tarjeta__bajada">Haz clic en cada casilla o arrastra el archivo encima. Solo carga los que vas a usar.</p>
+                <p class="tarjeta__bajada">Arrastra todos los archivos juntos al recuadro: la aplicación reconoce cuál es cuál. Solo carga los que vas a usar.</p>
             </div>
         </div>
 
         <div class="grupo">
             <div class="grupo__cabeza">
-                <h3>Contabilidad y liquidación</h3>
-                <p class="grupo__ayuda">El ERP y Transbank son la base del cruce. El banco es opcional y sirve para verificar el abono.</p>
+                <h3>Contabilidad, liquidación, banco y cartolas de tarjetas</h3>
+                <p class="grupo__ayuda">El ERP y Transbank son la base del cruce. El banco es opcional y sirve para verificar el abono. Las cartolas de American Express, Diners, Visa y Mastercard en dólares se cargan tal como las entrega cada emisor.</p>
             </div>
-            <div class="casillas">
-                {% include "conciliacion/_archivo.html" with campo="archivo1" titulo="ERP" icono="book-open" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="BORDERO del FrontOffice con los pagos US$" %}
-                {% include "conciliacion/_archivo.html" with campo="archivo7" titulo="Transbank" icono="credit-card" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Abonos por día en dólares (todos los medios) o liquidación antigua. Requiere el ERP." requiere="archivo1" %}
-                {% include "conciliacion/_archivo.html" with campo="archivo6" titulo="Banco" icono="landmark" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Cartola en dólares (Banco de Chile). Requiere Transbank." requiere="archivo7" %}
-            </div>
-        </div>
 
-        <div class="grupo">
-            <div class="grupo__cabeza">
-                <h3>Cartolas de tarjetas en dólares</h3>
-                <p class="grupo__ayuda">Tal como lo entrega cada emisor: .xls, .xlsx o .csv.</p>
+            <div class="soltar" data-soltar data-identificar="{% url 'conciliacion:identificar_dolares' %}">
+                <label class="soltar__zona">
+                    <input class="soltar__entrada" type="file" accept=".xls,.xlsx,.xlsm,.ods,.csv" multiple data-soltar-entrada>
+                    <span class="soltar__icono"><i data-lucide="upload" aria-hidden="true"></i></span>
+                    <span class="soltar__titulo">Suelta aquí el ERP, Transbank, la cartola del banco y las cartolas de tarjetas</span>
+                    <span class="soltar__ayuda">o haz clic para elegirlos · Excel, ODS o CSV, tal como se descargan</span>
+                </label>
+                <ul class="soltados" data-soltados aria-live="polite"></ul>
             </div>
-            <div class="casillas casillas--cuatro">
-                {% include "conciliacion/_archivo.html" with campo="archivo2" titulo="American Express" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Cartola Amex US$" %}
-                {% include "conciliacion/_archivo.html" with campo="archivo3" titulo="Diners" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Cartola Diners US$" %}
-                {% include "conciliacion/_archivo.html" with campo="archivo4" titulo="Visa" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Cartola Visa US$" %}
-                {% include "conciliacion/_archivo.html" with campo="archivo5" titulo="Mastercard" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="Cartola Mastercard US$" %}
+
+            {# Entradas reales del formulario: el recuadro reparte aquí cada archivo según su tipo. #}
+            <div hidden>
+                {% include "conciliacion/_archivo.html" with campo="archivo1" titulo="ERP" icono="book-open" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo7" titulo="Transbank" icono="credit-card" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" requiere="archivo1" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo6" titulo="Banco" icono="landmark" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" requiere="archivo7" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo2" titulo="American Express" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo3" titulo="Diners" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo4" titulo="Visa" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" %}
+                {% include "conciliacion/_archivo.html" with campo="archivo5" titulo="Mastercard" icono="file-spreadsheet" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" %}
             </div>
         </div>
     </article>
