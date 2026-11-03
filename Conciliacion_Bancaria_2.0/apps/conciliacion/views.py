@@ -3,8 +3,9 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_POST
 
 from . import bines, logica, logica_clp, registro
 from .dolar import dolar_para, fuente_elegida, fuente_otra
@@ -13,6 +14,15 @@ from .models import Conciliacion, Reporte
 logger = logging.getLogger(__name__)
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _identificar(request, clasificar):
+    """Campo del formulario al que va cada archivo soltado en el recuadro único (lo usa soltar.js)."""
+    respuesta = []
+    for archivo in request.FILES.getlist("archivos"):
+        tipo, motivo = clasificar(archivo)
+        respuesta.append({"nombre": archivo.name, "tipo": tipo, "motivo": motivo})
+    return JsonResponse({"archivos": respuesta})
 
 
 def _guardar_y_mostrar(request, moneda, archivos, nombres, resultado, reportes, cuadrado, por_revisar):
@@ -53,6 +63,13 @@ def dolares(request):
     return render(request, "conciliacion/dolares.html", contexto)
 
 
+@login_required
+@require_POST
+def identificar_dolares(request):
+    """Tipo de cada archivo soltado en el recuadro único de la página en dólares."""
+    return _identificar(request, logica.clasificar)
+
+
 # ---------------------------------------------------------------------------
 # Conciliación en pesos
 # ---------------------------------------------------------------------------
@@ -87,6 +104,13 @@ def pesos(request):
                                           resultado, reportes, resumen["cuadrado"], resumen["por_revisar"])
         contexto["errores"] = errores
     return render(request, "conciliacion/pesos.html", contexto)
+
+
+@login_required
+@require_POST
+def identificar_pesos(request):
+    """Tipo de cada archivo soltado en el recuadro único de la página en pesos."""
+    return _identificar(request, logica_clp.clasificar)
 
 
 # ---------------------------------------------------------------------------

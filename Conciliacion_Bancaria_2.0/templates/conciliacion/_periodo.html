@@ -1,1 +1,1 @@
-{% if not c.hasta %}—{% elif c.desde == c.hasta %}{{ c.hasta|date:"d-m-Y" }}{% else %}{{ c.desde|date:"d-m-Y" }} al {{ c.hasta|date:"d-m-Y" }}{% endif %}
+{% if not c.hasta %}—{% elif c.desde == c.hasta %}<strong class="fecha-periodo">{{ c.hasta|date:"d-m-Y" }}</strong>{% else %}<strong class="fecha-periodo">{{ c.desde|date:"d-m-Y" }}</strong> al <strong class="fecha-periodo">{{ c.hasta|date:"d-m-Y" }}</strong>{% endif %}

@@ -372,6 +372,38 @@ input {
     margin-top: 0.4rem;
 }
 
+/* Fechas del período conciliado: en el historial y en el detalle */
+.fecha-periodo {
+    color: var(--azul-900);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.periodo-conciliado {
+    align-items: center;
+    background: var(--azul-50);
+    border: 1px solid var(--linea-fuerte);
+    border-left: 4px solid var(--azul-800);
+    border-radius: var(--radio-sm);
+    color: var(--azul-900);
+    display: inline-flex;
+    font-size: 1.05rem;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+    padding: 0.55rem 0.9rem;
+}
+
+.periodo-conciliado svg {
+    color: var(--azul-800);
+    flex: 0 0 20px;
+    height: 20px;
+    width: 20px;
+}
+
+.periodo-conciliado .fecha-periodo {
+    font-size: 1.15rem;
+}
+
 .pie {
     border-top: 1px solid var(--linea);
     color: var(--tinta-suave);
@@ -858,6 +890,185 @@ input {
 
 .archivo.cargado .archivo__quitar {
     display: inline-flex;
+}
+
+/* Recuadro único: todos los archivos juntos, el tipo se reconoce solo */
+.soltar__zona {
+    align-items: center;
+    background: var(--superficie);
+    border: 1.5px dashed var(--linea-fuerte);
+    border-radius: var(--radio-md);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    justify-content: center;
+    min-height: 168px;
+    padding: 1.5rem 1rem;
+    position: relative;
+    text-align: center;
+    transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.soltar__zona:hover,
+.soltar.arrastrando .soltar__zona {
+    background: var(--azul-50);
+    border-color: var(--azul-800);
+}
+
+.soltar__zona:focus-within {
+    border-color: var(--azul-800);
+    box-shadow: var(--foco);
+}
+
+.soltar__entrada {
+    cursor: pointer;
+    height: 100%;
+    inset: 0;
+    opacity: 0;
+    position: absolute;
+    width: 100%;
+}
+
+.soltar__icono {
+    align-items: center;
+    background: var(--azul-50);
+    border-radius: 50%;
+    color: var(--azul-800);
+    display: inline-flex;
+    height: 48px;
+    justify-content: center;
+    margin-bottom: 0.25rem;
+    width: 48px;
+}
+
+.soltar__icono svg {
+    height: 22px;
+    width: 22px;
+}
+
+.soltar__titulo {
+    color: var(--azul-900);
+    font-weight: 700;
+}
+
+.soltar__ayuda {
+    color: var(--tinta-media);
+    font-size: var(--t-sm);
+}
+
+.soltados {
+    display: grid;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.soltados:not(:empty) {
+    margin-top: 0.75rem;
+}
+
+.soltado {
+    align-items: center;
+    background: var(--superficie);
+    border: 1px solid var(--linea);
+    border-radius: var(--radio-md);
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 36px minmax(0, 1fr) 32px;
+    padding: 0.55rem 0.6rem;
+}
+
+.soltado__icono {
+    align-items: center;
+    background: var(--azul-50);
+    border-radius: var(--radio-sm);
+    color: var(--azul-800);
+    display: inline-flex;
+    height: 36px;
+    justify-content: center;
+    width: 36px;
+}
+
+.soltado__icono svg {
+    height: 18px;
+    width: 18px;
+}
+
+.soltado__texto {
+    display: grid;
+    min-width: 0;
+}
+
+.soltado__nombre {
+    color: var(--tinta);
+    font-size: var(--t-sm);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.soltado__detalle {
+    color: var(--tinta-media);
+    font-size: var(--t-xs);
+}
+
+.soltado__quitar {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radio-sm);
+    color: var(--tinta-media);
+    cursor: pointer;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    width: 32px;
+}
+
+.soltado__quitar:hover {
+    background: var(--rojo-claro);
+    color: var(--rojo);
+}
+
+.soltado__quitar svg {
+    height: 18px;
+    width: 18px;
+}
+
+.soltado--reconocido {
+    background: var(--verde-claro);
+    border-color: var(--verde-borde);
+}
+
+.soltado--reconocido .soltado__icono {
+    background: var(--verde);
+    color: #fff;
+}
+
+.soltado--reconocido .soltado__detalle {
+    color: var(--verde-oscuro);
+    font-weight: 600;
+}
+
+.soltado--error {
+    background: var(--rojo-claro);
+    border-color: var(--rojo);
+}
+
+.soltado--error .soltado__icono {
+    background: transparent;
+    color: var(--rojo);
+}
+
+.soltado--error .soltado__detalle {
+    color: var(--rojo);
+}
+
+.soltado--pendiente .soltado__icono svg {
+    animation: girar 900ms linear infinite;
 }
 
 .analisis {

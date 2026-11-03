@@ -182,9 +182,8 @@ def periodo_del_encabezado(raw):
 
 def leer_bordero(archivo):
     """Pagos con tarjeta en pesos del BORDERO, sin anulaciones compensadas."""
-    es_encabezado = lambda f: "Cod. Deb." in f and "Documento" in f and "Valor" in f  # noqa: E731
-    raw = _leer(archivo, es_encabezado)
-    fila = _buscar_fila(raw, es_encabezado)
+    raw = _leer(archivo, _es_encabezado_bordero)
+    fila = _buscar_fila(raw, _es_encabezado_bordero)
     if fila is None:
         raise ArchivoInvalido("El BORDERO no tiene la fila de encabezados (Cod. Deb., Valor, Documento).")
     encabezado = [_texto(v) for v in raw.iloc[fila].tolist()]
@@ -269,9 +268,8 @@ def leer_transbank(archivo, medio=None):
     del encabezado del reporte («Medio de pago: Crédito») y, por último, `medio`.
     """
     nombre_archivo = getattr(archivo, "name", "") or "Transbank"
-    es_encabezado = lambda f: "Fecha de venta" in f  # noqa: E731
-    raw = _leer(archivo, es_encabezado)
-    fila = _buscar_fila(raw, es_encabezado)
+    raw = _leer(archivo, _es_encabezado_transbank)
+    fila = _buscar_fila(raw, _es_encabezado_transbank)
     if fila is None:
         raise ArchivoInvalido(f"{nombre_archivo} no tiene la tabla de detalle de Transbank ('Fecha de venta').")
 
@@ -402,6 +400,39 @@ def leer_cartola(archivo):
         if monto:
             abonos.append({"fecha": _fecha(raw.iat[i, c_fecha]), "descripcion": desc, "monto": monto})
     return abonos
+
+
+def _es_encabezado_bordero(fila):
+    return "Cod. Deb." in fila and "Documento" in fila and "Valor" in fila
+
+
+def _es_encabezado_transbank(fila):
+    return "Fecha de venta" in fila
+
+
+# Tipo de archivo -> fila de encabezados que lo delata, en el orden en que se prueban.
+TIPOS_ARCHIVO = {
+    "bordero": _es_encabezado_bordero,
+    "transbank": _es_encabezado_transbank,
+    "cartola": _encabezado_cartola,
+}
+
+
+def clasificar(archivo):
+    """('bordero' | 'transbank' | 'cartola', '') según el contenido, o (None, motivo) si no se reconoce."""
+    try:
+        hojas = lectura.leer_hojas(archivo)
+    except lectura.FormatoNoSoportado as exc:
+        return None, str(exc)
+    for tipo, es_encabezado in TIPOS_ARCHIVO.items():
+        for _, df in hojas:
+            fila = _buscar_fila(df, es_encabezado)
+            if fila is None:
+                continue
+            if tipo == "transbank" and es_en_dolares({"moneda": _dato_encabezado(df, fila, "Moneda")}):
+                return None, "Es un reporte de Transbank en dólares: cárgalo en la Conciliación en dólares."
+            return tipo, ""
+    return None, "No parece un BORDERO, un reporte «Abonos por día» de Transbank ni una cartola bancaria."
 
 
 # ---------------------------------------------------------------------------
