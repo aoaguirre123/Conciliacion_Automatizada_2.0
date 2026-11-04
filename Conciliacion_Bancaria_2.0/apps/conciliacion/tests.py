@@ -457,3 +457,56 @@ class PantallasTests(TestCase):
         archivos = respuesta.json()["archivos"]
         self.assertEqual([a["tipo"] for a in archivos], ["archivo1", "archivo7", "archivo6", "archivo4", None, None])
         self.assertIn("pesos", archivos[-1]["motivo"])
+
+
+class AtajosTests(TestCase):
+    """Botones «Conciliar con archivos de ejemplo» y «Borrar historial» de las páginas previas."""
+
+    def setUp(self):
+        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026")
+        self.client.force_login(self.usuario)
+
+    def _carpeta_ejemplos(self, archivos_por_carpeta):
+        import tempfile
+        from pathlib import Path
+        temporal = tempfile.TemporaryDirectory()
+        self.addCleanup(temporal.cleanup)
+        raiz = Path(temporal.name)
+        for carpeta, archivos in archivos_por_carpeta.items():
+            (raiz / carpeta).mkdir()
+            for archivo in archivos:
+                (raiz / carpeta / archivo.name).write_bytes(archivo.read())
+        return mock.patch("apps.conciliacion.views.EJEMPLOS", raiz)
+
+    def test_ejemplo_en_pesos_concilia_y_guarda(self):
+        with self._carpeta_ejemplos({"pesos": [bordero_clp(PAGOS_MIXTOS), transbank("tbk.xlsx", VENTAS_MIXTAS)]}):
+            respuesta = self.client.post("/conciliacion/pesos/ejemplo/")
+        self.assertEqual(respuesta.status_code, 302)
+        self.assertContains(self.client.get(respuesta["Location"]), "38.000")
+
+    @mock.patch("apps.conciliacion.dolar.obtener_serie_dolar", return_value=[])  # sin internet
+    def test_ejemplo_en_dolares_concilia_y_guarda(self, _dolar):
+        usd = [a for a in archivos_usd(formato_tarjeta="xlsx").values() if a]
+        with self._carpeta_ejemplos({"dolares": usd}):
+            respuesta = self.client.post("/conciliacion/ejemplo/")
+        self.assertEqual(respuesta.status_code, 302)
+        self.assertContains(self.client.get(respuesta["Location"]), "Abono encontrado en el banco")
+
+    def test_ejemplo_sin_archivos_avisa(self):
+        with self._carpeta_ejemplos({}):
+            respuesta = self.client.post("/conciliacion/pesos/ejemplo/")
+        self.assertContains(respuesta, "No hay archivos de ejemplo en el servidor")
+
+    def test_borrar_historial_borra_pesos_y_dolares(self):
+        from .models import Conciliacion
+        Conciliacion.objects.create(moneda=Conciliacion.PESOS)
+        Conciliacion.objects.create(moneda=Conciliacion.PESOS)
+        Conciliacion.objects.create(moneda=Conciliacion.DOLARES)
+        self.assertContains(self.client.get("/conciliacion/historial/"), "Borrar historial (3)")
+        self.assertNotContains(self.client.get("/conciliacion/pesos/"), "Borrar historial")
+        respuesta = self.client.post("/conciliacion/historial/borrar/", follow=True)
+        self.assertContains(respuesta, "Se borraron 3 conciliaciones del historial.")
+        self.assertFalse(Conciliacion.objects.exists())
+
+    def test_borrar_historial_no_acepta_get(self):
+        self.assertEqual(self.client.get("/conciliacion/historial/borrar/").status_code, 405)

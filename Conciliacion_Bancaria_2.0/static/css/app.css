@@ -1687,6 +1687,32 @@ input {
     border-color: var(--azul-800);
 }
 
+.boton--peligro {
+    background: var(--superficie);
+    border-color: var(--rojo-borde);
+    color: var(--rojo);
+}
+
+.boton--peligro:hover {
+    background: var(--rojo-claro);
+    border-color: var(--rojo);
+}
+
+/* Botón de archivos de ejemplo, antes de la conciliación */
+.atajos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+}
+
+@media (max-width: 600px) {
+    .atajos form,
+    .atajos .boton {
+        width: 100%;
+    }
+}
+
 .aviso--info {
     background: var(--azul-50);
     border-color: var(--linea);

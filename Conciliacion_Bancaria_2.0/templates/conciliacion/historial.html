@@ -1,6 +1,11 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block titulo %}Historial de conciliaciones{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/atajos.js' %}?v={{ APP_VERSION }}" defer></script>
+{% endblock %}
 
 {% block contenido %}
 <header class="encabezado">
@@ -8,7 +13,22 @@
         <h1>Historial de conciliaciones</h1>
         <p class="encabezado__bajada">Cada conciliación queda guardada con su resultado y sus archivos Excel. Ábrela para verla de nuevo o descarga los reportes directamente.</p>
     </div>
+    <form method="post" action="{% url 'conciliacion:borrar_historial' %}"
+          data-confirmar="¿Borrar las {{ total_historial }} conciliaciones del historial, en pesos y en dólares? Esta acción no se puede deshacer.">
+        {% csrf_token %}
+        <button type="submit" class="boton boton--peligro"{% if not total_historial %} disabled{% endif %}>
+            <i data-lucide="trash-2" aria-hidden="true"></i>
+            Borrar historial{% if total_historial %} ({{ total_historial }}){% endif %}
+        </button>
+    </form>
 </header>
+
+{% for mensaje in messages %}
+<div class="aviso aviso--exito aviso--separado" role="status">
+    <i data-lucide="circle-check" aria-hidden="true"></i>
+    <p>{{ mensaje }}</p>
+</div>
+{% endfor %}
 
 <div class="filtros" role="group" aria-label="Filtrar por moneda">
     <a class="filtro{% if not moneda %} filtro--activo{% endif %}" href="{% url 'conciliacion:historial' %}"{% if not moneda %} aria-current="true"{% endif %}>Todas</a>

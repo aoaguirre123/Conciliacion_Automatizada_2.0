@@ -1,0 +1,10 @@
+{# Botón de la página previa a la conciliación: ejemplo con archivos predescargados. #}
+<section class="atajos" aria-label="Ejemplo">
+    <form method="post" action="{{ ejemplo_url }}" data-ejemplo>
+        {% csrf_token %}
+        <button type="submit" class="boton boton--secundario">
+            <i data-lucide="flask-conical" aria-hidden="true"></i>
+            <span data-ejemplo-texto>Conciliar con archivos de ejemplo</span>
+        </button>
+    </form>
+</section>

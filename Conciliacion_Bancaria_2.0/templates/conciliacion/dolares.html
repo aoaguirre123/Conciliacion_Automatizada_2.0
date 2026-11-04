@@ -6,6 +6,7 @@
 {% block scripts %}
 <script src="{% static 'js/soltar.js' %}?v={{ APP_VERSION }}" defer></script>
 <script src="{% static 'js/conciliacion.js' %}?v={{ APP_VERSION }}" defer></script>
+<script src="{% static 'js/atajos.js' %}?v={{ APP_VERSION }}" defer></script>
 {% endblock %}
 
 {% block contenido %}
@@ -29,7 +30,8 @@
 </div>
 {% endif %}
 
-
+{% url 'conciliacion:ejemplo_dolares' as ejemplo_url %}
+{% include "conciliacion/_atajos.html" %}
 
 <form method="post" enctype="multipart/form-data" class="flujo" data-analisis>
     {% csrf_token %}
