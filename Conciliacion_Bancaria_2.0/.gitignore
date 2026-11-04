@@ -31,5 +31,6 @@ media/
 .idea/
 .DS_Store
 Thumbs.db
-# Archivos de ejemplo de los botones "Conciliar con archivos de ejemplo" (datos reales: no subir)
-ejemplos/
+
+# Archivos de ejemplo de los botones "Conciliar con archivos de ejemplo"
+!ejemplos/**
