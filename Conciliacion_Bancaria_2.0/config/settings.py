@@ -8,7 +8,10 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 ON_VERCEL = os.environ.get("VERCEL", "").lower() == "1"
-DEBUG = os.environ.get("DJANGO_DEBUG", "0" if ON_VERCEL else "1") == "1"
+# PythonAnywhere define PYTHONANYWHERE_DOMAIN (pythonanywhere.com o eu.pythonanywhere.com).
+PYTHONANYWHERE_DOMAIN = os.environ.get("PYTHONANYWHERE_DOMAIN", "")
+EN_SERVIDOR = ON_VERCEL or bool(PYTHONANYWHERE_DOMAIN)
+DEBUG = os.environ.get("DJANGO_DEBUG", "0" if EN_SERVIDOR else "1") == "1"
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
     "dev-P(ZyLeDl0tx^UG1ZL_fVypVGoeb7bjh9+cP_8SmlnDKCx9M@j=",
@@ -24,6 +27,8 @@ if ON_VERCEL:
     if vercel_url:
         configured_hosts.append(vercel_url.split(":", 1)[0])
     configured_hosts.append(".vercel.app")
+if PYTHONANYWHERE_DOMAIN:
+    configured_hosts.append(f".{PYTHONANYWHERE_DOMAIN}")
 ALLOWED_HOSTS = configured_hosts or ["127.0.0.1", "localhost"]
 
 csrf_origins = [
@@ -35,6 +40,9 @@ if ON_VERCEL:
     vercel_url = os.environ.get("VERCEL_URL", "")
     if vercel_url:
         csrf_origins.append(f"https://{vercel_url.split(':', 1)[0]}")
+    csrf_origins.append("https://*.vercel.app")
+if PYTHONANYWHERE_DOMAIN:
+    csrf_origins.append(f"https://*.{PYTHONANYWHERE_DOMAIN}")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -140,13 +148,3 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "loggers": {"apps": {"handlers": ["console"], "level": "INFO"}},
 }
-
-# Despliegue en Vercel (HTTPS detrás de un proxy)
-CSRF_TRUSTED_ORIGINS = [
-    "https://*.vercel.app",
-]
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
-if not DEBUG:
-    CSRF_COOKIE_SECURE = True
-    SESSION_COOKIE_SECURE = True
