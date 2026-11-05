@@ -6,6 +6,8 @@ incluyen datos reales del hotel). Ejecutar con:
     python manage.py test apps.conciliacion
 """
 import io
+import struct
+from datetime import date
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -13,7 +15,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.template import Context, Template
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import translation
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from . import lectura, logica, logica_clp
 
@@ -185,6 +187,229 @@ class MotorDolaresTests(SimpleTestCase):
         self.assertEqual([r[0] for r in reportes], ["ubicadas", "no_ubicadas", "erp_sin_respaldo"])
         for clave, *_, contenido in reportes:
             self.assertTrue(contenido.startswith(b"PK"), clave)
+
+
+class MontosCorridosTests(SimpleTestCase):
+    """En la posición por cliente los montos chicos vienen una columna a la derecha."""
+
+    def procesar(self, fila_tarjeta, pesos=-2941, dolares=2.99):
+        archivos = archivos_usd()
+        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11,
+            fila(11, c3=5001, c5="Pago Master Card US$", c8=pesos, c9="AUTH123", c10="01-09-2026")]})
+        archivos["archivo7"] = xlsx("tbk.xlsx", {"TBK": [[None] * 11,
+            fila(11, c1="detalle", c2="01-09-2026", c3="MC", c6=dolares, c7="AUTH123"),
+            fila(11, c1="Abono Calculado (=):", c2=dolares)]})
+        archivos["archivo5"] = xlsx("mastercard.xlsx", {"MC": [[None] * 15, fila_tarjeta]})
+        resultado = logica.procesar(archivos)[0]
+        return resultado, resultado["data_dolar"][2]
+
+    def test_dolares_en_saldo_y_pesos_en_saldo_corregido(self):
+        resultado, mastercard = self.procesar(fila(15, c2=5001, c13=2.99, c14=2941))
+        self.assertEqual(mastercard["ventas_tbk"], 2.99)
+        self.assertEqual(resultado["resumen"]["ubicadas"], 1)
+        self.assertTrue(resultado["resumen"]["cuadrado"])
+
+    def test_dolares_distintos_en_fila_corrida_dejan_diferencia(self):
+        resultado, mastercard = self.procesar(fila(15, c2=5001, c13=2.5, c14=2941))
+        self.assertEqual(mastercard["ventas_cm"], 2.5)
+        self.assertEqual(resultado["resumen"]["diferencia_total"], 0.49)
+        self.assertFalse(resultado["resumen"]["cuadrado"])
+
+    def test_pesos_corridos_con_dolares_en_su_columna(self):
+        resultado, mastercard = self.procesar(fila(15, c2=5001, c12=2.99, c14=2941))
+        self.assertEqual(mastercard["ventas_tbk"], 2.99)
+        self.assertTrue(resultado["resumen"]["cuadrado"])
+
+    def test_fila_normal_no_cambia(self):
+        fila_normal = {"Unnamed: 12": 137.04, "Unnamed: 13": 133612, "Unnamed: 14": None}
+        self.assertEqual(logica._montos_tarjeta(fila_normal), (137.04, 133612, None))
+
+    def test_solo_saldo_no_se_considera_corrida(self):
+        fila_saldo = {"Unnamed: 12": None, "Unnamed: 13": 133612, "Unnamed: 14": None}
+        self.assertEqual(logica._montos_tarjeta(fila_saldo), (None, 133612, None))
+
+
+class CruceDolaresTests(SimpleTestCase):
+    """Cómo se vincula cada venta de Transbank con su pago del ERP."""
+
+    def pago(self, cuenta, codigo, valor=-1000, fecha="10-09-2026", tarjeta="Master Card US$"):
+        return fila(11, c3=cuenta, c5=f"Pago {tarjeta}", c8=valor, c9=codigo, c10=fecha)
+
+    def venta(self, codigo, monto=100.0, fecha="10-09-2026", tipo="MC"):
+        return fila(11, c1="detalle", c2=fecha, c3=tipo, c6=monto, c7=codigo)
+
+    def posicion(self, cuenta, dolares=100.0, pesos=1000):
+        return fila(15, c2=cuenta, c12=dolares, c13=pesos)
+
+    def procesar(self, pagos, ventas, posiciones, visa=None):
+        archivos = archivos_usd()
+        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, *pagos]})
+        archivos["archivo7"] = xlsx("tbk.xlsx", {"TBK": [[None] * 11, *ventas]})
+        archivos["archivo5"] = xlsx("mc.xlsx", {"MC": [[None] * 15, *posiciones]})
+        if visa:
+            archivos["archivo4"] = xlsx("visa.xlsx", {"Visa": [[None] * 15, *visa]})
+        return logica.procesar(archivos)
+
+    def registros(self, *args, **kwargs):
+        resumen = self.procesar(*args, **kwargs)[0]["resumen"]
+        return resumen, list(logica.informacion_proceso)
+
+    def test_entre_codigos_repetidos_toma_el_de_la_fecha_de_la_venta(self):
+        resumen, [reg] = self.registros(
+            [self.pago(1, "777", -5000, "10-06-2026"), self.pago(2, "777", -1000, "10-09-2026")],
+            [self.venta("777")], [self.posicion(1, 500.0, 5000), self.posicion(2)])
+        self.assertEqual(reg["documento"], 2)
+        self.assertEqual(reg["monto_cartola"], 100.0)
+        self.assertTrue(resumen["cuadrado"])
+
+    def test_el_mismo_dia_toma_el_de_monto_mas_cercano(self):
+        _, [reg] = self.registros(
+            [self.pago(1, "777", -5000), self.pago(2, "777", -1000)],
+            [self.venta("777")], [self.posicion(1, 500.0, 5000), self.posicion(2)])
+        self.assertEqual(reg["documento"], 2)
+
+    def test_codigo_en_otra_fecha_y_otro_monto_no_vincula(self):
+        resumen, [reg] = self.registros(
+            [self.pago(1, "777", -5000, "10-06-2026"), self.pago(9, "111", -1000)],
+            [self.venta("777", fecha="10-09-2026")], [self.posicion(1, 500.0, 5000)])
+        self.assertEqual(reg["extra"], "NO")
+        self.assertIn("otra fecha", reg["nota"])
+        self.assertEqual(resumen["por_revisar"], 100.0)
+
+    def test_parte_de_un_numero_no_es_el_codigo(self):
+        resumen, _ = self.registros([self.pago(1, "135870")], [self.venta("3587")], [self.posicion(1, 999.0)])
+        self.assertEqual((resumen["ubicadas"], resumen["no_ubicadas"]), (0, 1))
+
+    def test_codigo_dentro_de_un_texto_con_varias_partes(self):
+        _, [reg] = self.registros([self.pago(1, "00 DUAL 00819067")], [self.venta("819067")], [self.posicion(1)])
+        self.assertEqual(reg["documento"], 1)
+
+    def test_codigo_digitado_distinto(self):
+        _, [reg] = self.registros([self.pago(1, "09H8E08")], [self.venta("9H8EO8")], [self.posicion(1)])
+        self.assertEqual(reg["documento"], 1)
+        self.assertIn("digitado", reg["nota"])
+
+    def test_cada_pago_se_usa_una_sola_vez(self):
+        resumen, _ = self.registros([self.pago(1, "777")], [self.venta("777"), self.venta("777")], [self.posicion(1)])
+        self.assertEqual((resumen["ubicadas"], resumen["no_ubicadas"]), (1, 1))
+
+    def test_pago_de_otra_tarjeta_no_vincula(self):
+        resumen, [reg] = self.registros(
+            [self.pago(1, "777", tarjeta="Visa US$")], [self.venta("777", tipo="MC")],
+            [self.posicion(99)], visa=[self.posicion(1)])
+        self.assertEqual(resumen["ubicadas"], 0)
+        self.assertIn("otra tarjeta", reg["nota"])
+
+    def test_otro_codigo_con_mismo_monto_y_fecha_se_marca_para_revisar(self):
+        resumen, [reg] = self.registros([self.pago(1, "555")], [self.venta("777")], [self.posicion(1)])
+        self.assertEqual(reg["documento"], 1)
+        self.assertIn("revisar", reg["nota"])
+        self.assertEqual(resumen["con_nota"], 1)
+
+    def test_su_propio_codigo_con_otro_monto_gana_a_otro_codigo_con_el_mismo_monto(self):
+        _, [reg] = self.registros(
+            [self.pago(1, "555"), self.pago(2, "777", -2000)], [self.venta("777")],
+            [self.posicion(1), self.posicion(2, 100.40, 2000)])
+        self.assertEqual(reg["documento"], 2)
+        self.assertEqual(reg["estado"], "diferencia")
+
+    def test_reversa_y_pago_dividido_en_dos_documentos(self):
+        # Caso real: US$ 364,50 pagados en 243 + 121,50, con una reversa del primero.
+        resumen, [reg] = self.registros(
+            [self.pago(1, "503Z", 2000), self.pago(1, "503Z", -2000), self.pago(2, "503Z", -1000), self.pago(1, "503Z", -2000)],
+            [self.venta("00503Z", 364.5)], [self.posicion(1, 243.0, 2000), self.posicion(2, 121.5, 1000)])
+        self.assertEqual(reg["documento"], "2 + 1")
+        self.assertEqual(reg["monto_cartola"], 364.5)
+        self.assertIn("dividido", reg["nota"])
+        self.assertTrue(resumen["cuadrado"])
+
+    def test_redondeo_hasta_diez_centavos_inclusive(self):
+        resumen, [reg] = self.registros([self.pago(1, "777")], [self.venta("777", 100.0)], [self.posicion(1, 100.10)])
+        self.assertEqual(reg["estado"], "redondeo")
+        self.assertIn("redondeo", reg["nota"])
+        self.assertEqual((resumen["redondeo"], resumen["diferencias"], resumen["por_revisar"]), (1, 0, 0))
+        self.assertTrue(resumen["cuadrado"])
+        self.assertEqual(resumen["diferencia_total"], -0.1)
+
+    def test_sobre_diez_centavos_es_diferencia_de_monto(self):
+        resumen, [reg] = self.registros([self.pago(1, "777")], [self.venta("777", 100.0)], [self.posicion(1, 100.11)])
+        self.assertEqual(reg["estado"], "diferencia")
+        self.assertEqual((resumen["redondeo"], resumen["diferencias"], resumen["por_revisar"]), (0, 1, 0.11))
+        self.assertFalse(resumen["cuadrado"])
+
+    def test_varias_diferencias_de_redondeo_no_descuadran(self):
+        resumen, _ = self.registros(
+            [self.pago(1, "777"), self.pago(2, "888")], [self.venta("777"), self.venta("888")],
+            [self.posicion(1, 100.10), self.posicion(2, 100.09)])
+        self.assertEqual(resumen["redondeo"], 2)
+        self.assertTrue(resumen["cuadrado"])
+
+    def test_columnas_y_signo_coinciden_con_el_excel(self):
+        resultado, reportes = self.procesar([self.pago(1, "777")], [self.venta("777", 100.0)], [self.posicion(1, 99.5)])
+        mastercard = resultado["data_dolar"][2]
+        self.assertEqual((mastercard["ventas_cm"], mastercard["ventas_tbk"], mastercard["diferencia"]), (99.5, 100.0, 0.5))
+        self.assertEqual(logica.informacion_proceso[0]["diferencia"], 0.5)
+        hoja = load_workbook(io.BytesIO(reportes[0][-1])).active
+        encabezados = [c.value for c in hoja[2]]
+        self.assertIn("monto_cartola", encabezados)
+        self.assertEqual(hoja.cell(row=3, column=encabezados.index("diferencia") + 1).value, 0.5)
+
+    def test_venta_sin_marca_toma_la_marca_del_pago(self):
+        resultado, _ = self.procesar([self.pago(1, "777")], [self.venta("777", tipo="Sin identificar")], [self.posicion(1)])
+        self.assertEqual(resultado["resumen"]["ubicadas"], 1)
+        self.assertEqual(resultado["resumen"]["sin_marca"], 1)
+        self.assertEqual(resultado["data_dolar"][2]["ventas_tbk"], 100.0)
+        self.assertIn("ERP", logica.informacion_proceso[0]["nota"])
+
+    def test_venta_sin_marca_ni_registro_queda_a_la_vista(self):
+        resumen, [reg] = self.registros([self.pago(1, "111")], [self.venta("777", 50.0, tipo="Sin identificar")], [self.posicion(1)])
+        self.assertEqual((resumen["no_ubicadas"], resumen["sin_marca"], resumen["por_revisar"]), (1, 1, 50.0))
+        self.assertIn("no identificada", reg["nota"])
+
+    def test_encabezados_del_reporte_no_son_ventas(self):
+        resumen, _ = self.registros(
+            [self.pago(1, "777")],
+            [fila(11, c1="Tipo Transacción", c2="Fecha Venta", c3="Tipo Tarjeta", c6="Monto Original Venta", c7="Código Autorización Venta"),
+             self.venta("777")], [self.posicion(1)])
+        self.assertEqual((resumen["ubicadas"], resumen["no_ubicadas"]), (1, 0))
+
+    def test_venta_fuera_del_periodo_no_suma_a_por_revisar(self):
+        resumen, [reg] = self.registros([self.pago(1, "111")], [self.venta("777", fecha="10-01-2026")], [self.posicion(1, 1.0)])
+        self.assertEqual(reg["estado"], "fuera_periodo")
+        self.assertEqual((resumen["fuera_periodo"], resumen["por_revisar"]), (1, 0))
+
+    def test_erp_contra_cartola_incluye_las_cuatro_tarjetas(self):
+        archivos = archivos_usd()
+        tarjetas = {"archivo2": "Amex US$", "archivo3": "Dinners US$", "archivo4": "Visa US$", "archivo5": "Master Card US$"}
+        pagos = []
+        for n, (campo, nombre) in enumerate(tarjetas.items(), start=1):
+            pagos += [self.pago(n, f"{n}11", -1000 * n, tarjeta=nombre), self.pago(90 + n, f"{n}22", -77, tarjeta=nombre)]
+            archivos[campo] = xlsx(f"{campo}.xlsx", {"Hoja": [[None] * 15, self.posicion(n, 10.0, 1000 * n)]})
+        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, *pagos]})
+        resultado = logica.procesar(archivos)[0]
+        ventas_cm = {f["cuenta"]: f["ventas_cm"] for f in resultado["data"]}
+        self.assertEqual(ventas_cm, {"Amex US$": 1000, "Dinners US$": 2000, "Visa US$": 3000, "Master Card US$": 4000, "Total": 10000})
+        self.assertEqual(resultado["resumen"]["erp_sin_tarjeta"], 4)
+        self.assertEqual(set(logica.tc_inf), set(tarjetas.values()))
+
+    def test_erp_contra_cartola_exige_el_mismo_monto_tambien_en_amex(self):
+        archivos = archivos_usd()
+        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, self.pago(1, "111", -1000, tarjeta="Amex US$")]})
+        archivos["archivo2"] = xlsx("amex.xlsx", {"Amex": [[None] * 15, self.posicion(1, 10.0, 5000)]})
+        resultado = logica.procesar(archivos)[0]
+        self.assertEqual(resultado["data"][0]["ventas_cm"], 0)
+        self.assertEqual(resultado["resumen"]["erp_sin_tarjeta"], 1)
+
+    def test_tarjeta_sin_cartola_cargada_no_cuenta_como_sin_respaldo(self):
+        archivos = archivos_usd()
+        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, self.pago(1, "111", tarjeta="Visa US$")]})
+        self.assertEqual(logica.procesar(archivos)[0]["resumen"]["erp_sin_tarjeta"], 0)
+
+    def test_pago_que_no_esta_en_la_cartola_es_diferencia(self):
+        resumen, [reg] = self.registros([self.pago(1, "777")], [self.venta("777", 80.0)], [self.posicion(99)])
+        self.assertEqual((reg["monto_cartola"], reg["diferencia"], reg["estado"]), (0.0, 80.0, "diferencia"))
+        self.assertIn("NO ESTA", reg["status"])
+        self.assertEqual(resumen["por_revisar"], 80.0)
 
 
 # ---------------------------------------------------------------------------
@@ -459,6 +684,185 @@ class PantallasTests(TestCase):
         self.assertIn("pesos", archivos[-1]["motivo"])
 
 
+class VariosBorderosTests(SimpleTestCase):
+    """Un BORDERO por tarjeta: todos se juntan en una sola conciliación."""
+
+    def _bordero(self, nombre, pagos):
+        archivo = bordero_clp(pagos)
+        archivo.name = nombre
+        return archivo
+
+    def test_junta_los_pagos_de_todos_los_archivos(self):
+        visa = self._bordero("visa.xlsx", PAGOS_MIXTOS[:1])
+        resto = self._bordero("resto.xlsx", PAGOS_MIXTOS[1:])
+        pagos, periodo, repetidos, pagos_repetidos = logica_clp.leer_borderos([visa, resto])
+        solo, periodo_solo = logica_clp.leer_bordero(self._bordero("todo.xlsx", PAGOS_MIXTOS))
+        self.assertEqual(sorted(p["monto"] for p in pagos), sorted(p["monto"] for p in solo))
+        self.assertEqual({p["archivo"] for p in pagos}, {"visa.xlsx", "resto.xlsx"})
+        self.assertEqual((periodo, repetidos, pagos_repetidos), (periodo_solo, [], 0))
+
+    def test_archivo_y_pagos_repetidos_se_cuentan_una_vez(self):
+        todo = self._bordero("todo.xlsx", PAGOS_MIXTOS)
+        copia = self._bordero("copia.xlsx", PAGOS_MIXTOS)
+        parte = self._bordero("parte.xlsx", PAGOS_MIXTOS[:1])
+        base, _ = logica_clp.leer_bordero(self._bordero("base.xlsx", PAGOS_MIXTOS))
+        pagos, _, repetidos, pagos_repetidos = logica_clp.leer_borderos([todo, copia, parte])
+        self.assertEqual(len(pagos), len(base))
+        self.assertEqual(repetidos, ["copia.xlsx"])
+        self.assertEqual(pagos_repetidos, 1)
+
+    def test_un_bordero_sin_pagos_no_bloquea_a_los_demas(self):
+        vacio = self._bordero("vacio.xlsx", [])
+        con_pagos = self._bordero("visa.xlsx", PAGOS_MIXTOS)
+        pagos, _, _, _ = logica_clp.leer_borderos([vacio, con_pagos])
+        self.assertTrue(pagos)
+        with self.assertRaises(logica_clp.ArchivoInvalido):
+            logica_clp.leer_borderos([self._bordero("vacio2.xlsx", [])])
+
+
+def xls_antiguo(filas):
+    """Excel antiguo (BIFF4) como el que exporta el FrontOffice: una fila de texto por cada elemento."""
+    registros = [struct.pack("<HHHHH", 0x0409, 6, 0, 0x10, 0)]
+    for numero_fila, celdas in enumerate(filas):
+        for columna, valor in enumerate(celdas):
+            datos = str(valor).encode("latin-1")
+            registros.append(struct.pack("<HHHHHH", 0x0204, 8 + len(datos), numero_fila, columna, 0, len(datos)) + datos)
+    registros.append(struct.pack("<HH", 0x000A, 0))
+    return b"".join(registros)
+
+
+class ExcelAntiguoLargoTests(SimpleTestCase):
+    def test_lee_mas_filas_que_el_tope_de_xlrd(self):
+        archivo = SimpleUploadedFile("largo.XLS", xls_antiguo([["fila", i] for i in range(20000)]))
+        _, tabla = lectura.leer_hojas(archivo)[0]
+        self.assertEqual(len(tabla), 20000)
+        self.assertEqual(str(tabla.iat[19999, 1]), "19999")
+
+    def test_archivo_danado_explica_el_motivo(self):
+        archivo = SimpleUploadedFile("malo.xls", xls_antiguo([["a"]])[:-20] + b"\xff" * 30)
+        with mock.patch("pandas.read_excel", side_effect=AssertionError()):
+            with self.assertRaisesRegex(lectura.FormatoNoSoportado, "dañado"):
+                lectura.leer_hojas(archivo)
+
+
+class VariosErpTests(SimpleTestCase):
+    """En dólares, el ERP puede ser el BORDERO completo o uno por tarjeta."""
+
+    def _erp(self, nombre, *filas):
+        return xlsx(nombre, {"ERP": [[None] * 11, *filas]})
+
+    MC = fila(11, c3=5001, c5="Pago Master Card US$", c8=-100, c9="AUTH123", c10="01-09-2026")
+    VISA = fila(11, c3=7001, c5="Pago Visa US$", c8=-50, c9="AUTH777", c10="02-09-2026")
+
+    def test_dos_erp_dan_lo_mismo_que_uno_con_todo(self):
+        archivos = archivos_usd()
+        archivos["archivo1"] = self._erp("completo.xlsx", self.MC, self.VISA)
+        completo = logica.procesar(archivos)[0]
+
+        archivos = archivos_usd()
+        archivos["archivo1"] = [self._erp("mc.xlsx", self.MC), self._erp("visa.xlsx", self.VISA)]
+        separados = logica.procesar(archivos)[0]
+
+        self.assertEqual(separados["data"], completo["data"])
+        self.assertEqual(separados["data_dolar"], completo["data_dolar"])
+        self.assertEqual(separados["resumen"]["ubicadas"], 1)
+        self.assertEqual((separados["resumen"]["erp_repetidos"], separados["resumen"]["filas_erp_repetidas"]), ([], 0))
+
+    def test_completo_mas_por_tarjeta_no_cuenta_doble(self):
+        archivos = archivos_usd()
+        archivos["archivo1"] = self._erp("solo.xlsx", self.MC, self.VISA)
+        base = logica.procesar(archivos)[0]
+
+        archivos = archivos_usd()
+        archivos["archivo1"] = [self._erp("todo.xlsx", self.MC, self.VISA), self._erp("mc.xlsx", self.MC)]
+        resultado = logica.procesar(archivos)[0]
+        self.assertEqual(resultado["data"], base["data"])
+        self.assertEqual(resultado["resumen"]["filas_erp_repetidas"], 1)
+
+    def test_mismo_numero_como_entero_o_decimal_es_la_misma_fila(self):
+        archivos = archivos_usd()
+        archivos["archivo1"] = [self._erp("a.xlsx", fila(11, c3=7001, c5="Pago Visa US$", c6=107093, c8=-50, c9="AUTH777")),
+                                self._erp("b.xlsx", fila(11, c3=7001, c5="Pago Visa US$", c6=107093.0, c8=-50, c9="AUTH777"),
+                                          fila(11, c3=7002, c5="Pago Visa US$", c6=1.5, c8=-60, c9="AUTH778"))]
+        self.assertEqual(logica.procesar(archivos)[0]["resumen"]["filas_erp_repetidas"], 1)
+
+    def test_encabezados_de_pagina_no_cuentan_como_repetidos(self):
+        encabezado = fila(11, c4="Cod. Deb.", c5="Descripción", c8="Valor", c9="Documento", c10="Fecha")
+        mc = fila(11, c3=5001, c4="MCUS$", c5="Master Card US$", c8=-100, c9="AUTH123", c10="01-09-2026")
+        visa = fila(11, c3=7001, c4="VUS$", c5="Visa US$", c8=-50, c9="AUTH777", c10="02-09-2026")
+        archivos = archivos_usd()
+        archivos["archivo1"] = [self._erp("mc.xlsx", encabezado, mc), self._erp("visa.xlsx", encabezado, visa)]
+        self.assertEqual(logica.procesar(archivos)[0]["resumen"]["filas_erp_repetidas"], 0)
+
+    def test_el_codigo_en_otra_fila_del_bordero_no_es_el_pago(self):
+        # Caso real: «Venta:303742» en un consumo del bar, antes del pago Visa US$ con ese código.
+        pago = fila(11, c3=5001, c4="MCUS$", c5="Master Card US$", c8=-100, c9="AUTH123", c10="01-09-2026")
+        bar = fila(11, c3=9999, c4="BAR", c5="BAR BRISTOL", c8=12101, c9="Venta:AUTH123", c10="20-08-2026")
+        archivos = archivos_usd()
+        archivos["archivo1"] = self._erp("completo.xlsx", bar, pago)
+        resultado = logica.procesar(archivos)[0]
+        self.assertEqual(logica.informacion_proceso[0]["documento"], 5001)
+        self.assertEqual(resultado["data_dolar"][-1]["diferencia"], 0)
+
+    def test_archivo_subido_dos_veces_se_lee_una(self):
+        archivos = archivos_usd()
+        datos = self._erp("uno.xlsx", self.MC).read()
+        archivos["archivo1"] = [SimpleUploadedFile("uno.xlsx", datos), SimpleUploadedFile("copia.xlsx", datos)]
+        self.assertEqual(logica.procesar(archivos)[0]["resumen"]["erp_repetidos"], ["copia.xlsx"])
+
+
+class CruceConFechaTests(SimpleTestCase):
+    """El cruce no se queda con el primer código: también mira el monto y la fecha."""
+
+    def _venta(self, codigo, monto, fecha):
+        return {"codigo": codigo, "codigo_flex": codigo, "monto": monto, "fecha": fecha}
+
+    def _pago(self, codigo, monto, fecha):
+        return {"codigo": codigo, "codigo_flex": codigo, "documento": codigo, "monto": monto, "fecha": fecha,
+                "cod": "RCO", "cuenta": "1"}
+
+    def _cruzar(self, venta, pagos):
+        pendientes = logica_clp._cruzar([venta], pagos, (date(2026, 1, 1), date(2026, 11, 4)))
+        return venta, pendientes
+
+    def test_mismo_monto_y_fecha_gana_a_un_codigo_igual_de_otro_mes(self):
+        # Caso real: venta 003538 del 29-10; el pago correcto quedó digitado como 3568.
+        correcto = self._pago("3568", 67650, date(2026, 10, 29))
+        venta, _ = self._cruzar(self._venta("3538", 67650, date(2026, 10, 29)), [
+            self._pago("3538", 16560, date(2026, 6, 5)),
+            self._pago("3538", 11331, date(2026, 1, 8)),
+            self._pago("3538", 10199, date(2026, 4, 1)),
+            correcto,
+        ])
+        self.assertEqual(venta["estado"], "conciliado")
+        self.assertEqual(venta["documento_bordero"], "3568")
+        self.assertIn("revisar código", venta["nota"])
+
+    def test_con_varios_iguales_elige_el_de_la_fecha_de_la_venta(self):
+        venta, _ = self._cruzar(self._venta("3538", 5000, date(2026, 10, 29)), [
+            self._pago("3538", 5000, date(2026, 6, 5)),
+            self._pago("3538", 5000, date(2026, 10, 29)),
+        ])
+        self.assertEqual((venta["estado"], venta["fecha_bordero"], venta["nota"]), ("conciliado", date(2026, 10, 29), ""))
+
+    def test_codigo_igual_con_otro_monto_lejano_no_es_diferencia(self):
+        venta, pendientes = self._cruzar(self._venta("3538", 67650, date(2026, 10, 29)),
+                                         [self._pago("3538", 16560, date(2026, 6, 5))])
+        self.assertEqual(venta["estado"], "sin_registro")
+        self.assertEqual(len(pendientes), 1)
+
+    def test_codigo_igual_con_otro_monto_en_fecha_es_diferencia(self):
+        venta, _ = self._cruzar(self._venta("3538", 67650, date(2026, 10, 29)),
+                                [self._pago("3538", 16560, date(2026, 10, 28))])
+        self.assertEqual(venta["estado"], "diferencia")
+
+    def test_codigo_y_monto_iguales_en_otra_fecha_queda_con_observacion(self):
+        venta, _ = self._cruzar(self._venta("3538", 5000, date(2026, 10, 29)),
+                                [self._pago("3538", 5000, date(2026, 6, 5))])
+        self.assertEqual(venta["estado"], "conciliado")
+        self.assertIn("otra fecha", venta["nota"])
+
+
 class AtajosTests(TestCase):
     """Botones «Conciliar con archivos de ejemplo» y «Borrar historial» de las páginas previas."""
 
@@ -491,6 +895,17 @@ class AtajosTests(TestCase):
             respuesta = self.client.post("/conciliacion/ejemplo/")
         self.assertEqual(respuesta.status_code, 302)
         self.assertContains(self.client.get(respuesta["Location"]), "Abono encontrado en el banco")
+
+    @mock.patch("apps.conciliacion.dolar.obtener_serie_dolar", return_value=[])  # sin internet
+    def test_varios_erp_en_la_pantalla_de_dolares(self, _dolar):
+        usd = {campo: a for campo, a in archivos_usd().items() if a}
+        visa = xlsx("visa.xlsx", {"ERP": [[None] * 11, fila(11, c3=7001, c5="Pago Visa US$", c8=-50, c9="AUTH777", c10="02-09-2026")]})
+        usd["archivo1"] = [usd["archivo1"], visa]
+        respuesta = self.client.post("/conciliacion/", usd)
+        self.assertEqual(respuesta.status_code, 302)
+        detalle = self.client.get(respuesta["Location"])
+        self.assertContains(detalle, "erp.xlsx")
+        self.assertContains(detalle, "visa.xlsx")
 
     def test_ejemplo_sin_archivos_avisa(self):
         with self._carpeta_ejemplos({}):

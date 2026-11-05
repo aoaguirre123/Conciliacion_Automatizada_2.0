@@ -10,6 +10,9 @@
             </p>
             <p class="cuadratura__monto num">US$ {{ resumen.diferencia_total|floatformat:"2g" }}</p>
             <p class="cuadratura__detalle">Diferencia total en dólares (Ventas TBK menos Ventas CM).</p>
+            {% if resumen.por_revisar is not None %}
+            <p class="cuadratura__detalle">Por revisar: US$ {{ resumen.por_revisar|floatformat:"2g" }} (diferencias de más de US$ {{ resumen.tolerancia_redondeo|floatformat:"2g" }} y ventas sin registro).</p>
+            {% endif %}
         </div>
     </div>
 
@@ -35,6 +38,37 @@
     </div>
     {% endif %}
 
+    {% if resumen.erp_repetidos or resumen.filas_erp_repetidas %}
+    <div class="aviso aviso--info" role="status">
+        <i data-lucide="copy" aria-hidden="true"></i>
+        <div>
+            <strong>Se ignoraron datos repetidos del ERP</strong>
+            {% if resumen.erp_repetidos %}<p>Archivo{{ resumen.erp_repetidos|length|pluralize }} cargado{{ resumen.erp_repetidos|length|pluralize }} más de una vez: {{ resumen.erp_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
+            {% if resumen.filas_erp_repetidas %}<p>{{ resumen.filas_erp_repetidas }} fila{{ resumen.filas_erp_repetidas|pluralize }} venía{{ resumen.filas_erp_repetidas|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if resumen.sin_marca %}
+    <div class="aviso aviso--alerta" role="status">
+        <i data-lucide="triangle-alert" aria-hidden="true"></i>
+        <div>
+            <strong>Ventas sin marca de tarjeta identificada</strong>
+            <p>{{ resumen.sin_marca }} venta{{ resumen.sin_marca|pluralize }} de Transbank no tiene{{ resumen.sin_marca|pluralize:"n" }} una marca reconocida. Se buscó en los pagos de todas las tarjetas; revisa la observación en los Excel.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if resumen.fuera_periodo %}
+    <div class="aviso aviso--info" role="status">
+        <i data-lucide="calendar" aria-hidden="true"></i>
+        <div>
+            <strong>Ventas fuera del período del ERP</strong>
+            <p>{{ resumen.fuera_periodo }} venta{{ resumen.fuera_periodo|pluralize }} sin registro {{ resumen.fuera_periodo|pluralize:"es,son" }} de fechas que el ERP no cubre, y no se {{ resumen.fuera_periodo|pluralize:"cuenta,cuentan" }} como monto por revisar.</p>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="indicadores">
         <div class="indicador">
             <span class="indicador__valor">{{ resumen.ubicadas }}</span>
@@ -50,10 +84,27 @@
         </div>
     </div>
 
+    {% if resumen.por_revisar is not None %}
+    <div class="indicadores">
+        <div class="indicador">
+            <span class="indicador__valor">{{ resumen.redondeo }}</span>
+            <span class="indicador__texto">Diferencias de redondeo (hasta US$ {{ resumen.tolerancia_redondeo|floatformat:"2g" }})</span>
+        </div>
+        <div class="indicador{% if resumen.diferencias %} indicador--atencion{% endif %}">
+            <span class="indicador__valor">{{ resumen.diferencias }}</span>
+            <span class="indicador__texto">Diferencias de monto (más de US$ {{ resumen.tolerancia_redondeo|floatformat:"2g" }})</span>
+        </div>
+        <div class="indicador{% if resumen.con_nota %} indicador--atencion{% endif %}">
+            <span class="indicador__valor">{{ resumen.con_nota }}</span>
+            <span class="indicador__texto">Vínculos marcados para revisar</span>
+        </div>
+    </div>
+    {% endif %}
+
     <article class="tarjeta">
         <div class="tarjeta__cabeza">
             <h2>Transbank vs. cartolas de tarjetas (US$)</h2>
-            <p class="tarjeta__bajada">Transacciones de Transbank que se ubicaron en el ERP, comparadas con la cartola de cada tarjeta.</p>
+            <p class="tarjeta__bajada">Transacciones de Transbank que se ubicaron en el ERP. Ventas TBK es lo que informa Transbank y Ventas CM lo que informa la cartola de cada tarjeta.</p>
         </div>
         {% include "conciliacion/_tabla.html" with filas=data_dolar formato="2g" %}
     </article>
@@ -61,7 +112,7 @@
     <article class="tarjeta">
         <div class="tarjeta__cabeza">
             <h2>ERP vs. Transbank</h2>
-            <p class="tarjeta__bajada">Montos del ERP ubicados en las cartolas, frente a los montos del ERP que Transbank encontró por código de autorización.</p>
+            <p class="tarjeta__bajada">En pesos. Ventas CM son los montos del ERP ubicados en la cartola de cada tarjeta, de todo el período. Ventas TBK son los montos del ERP vinculados a las ventas de este abono. Por eso no tienen que coincidir.</p>
         </div>
         {% include "conciliacion/_tabla.html" with filas=data formato="g" %}
     </article>

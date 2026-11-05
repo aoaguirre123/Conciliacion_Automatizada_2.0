@@ -45,14 +45,14 @@
         <div class="grupo">
             <div class="grupo__cabeza">
                 <h3>Registro del hotel, Transbank y banco</h3>
-                <p class="grupo__ayuda">El BORDERO es la base del cruce. En Transbank puedes cargar uno o varios reportes «Abonos por día»: separados por medio de pago o un solo archivo con crédito, débito y prepago juntos; el medio se toma de cada venta y los archivos o ventas repetidos se cuentan una sola vez. La cartola es opcional y sirve para verificar que cada abono llegó a la cuenta.</p>
+                <p class="grupo__ayuda">El BORDERO es la base del cruce: puedes cargar uno solo o varios, por ejemplo uno por tarjeta; se juntan en una sola conciliación. En Transbank puedes cargar uno o varios reportes «Abonos por día»: separados por medio de pago o un solo archivo con crédito, débito y prepago juntos; el medio se toma de cada venta y los archivos o ventas repetidos se cuentan una sola vez. La cartola es opcional y sirve para verificar que cada abono llegó a la cuenta.</p>
             </div>
 
             <div class="soltar" data-soltar data-identificar="{% url 'conciliacion:identificar_pesos' %}">
                 <label class="soltar__zona">
                     <input class="soltar__entrada" type="file" accept=".xls,.xlsx,.xlsm,.ods,.csv" multiple data-soltar-entrada>
                     <span class="soltar__icono"><i data-lucide="upload" aria-hidden="true"></i></span>
-                    <span class="soltar__titulo">Suelta aquí el BORDERO, los reportes de Transbank y la cartola</span>
+                    <span class="soltar__titulo">Suelta aquí los BORDERO, los reportes de Transbank y la cartola</span>
                     <span class="soltar__ayuda">o haz clic para elegirlos · Excel, ODS o CSV, tal como se descargan</span>
                 </label>
                 <ul class="soltados" data-soltados aria-live="polite"></ul>
@@ -60,7 +60,7 @@
 
             {# Entradas reales del formulario: el recuadro reparte aquí cada archivo según su tipo. #}
             <div hidden>
-                {% include "conciliacion/_archivo.html" with campo="bordero" titulo="BORDERO" icono="book-open" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" obligatorio=True %}
+                {% include "conciliacion/_archivo.html" with campo="bordero" titulo="BORDERO" icono="book-open" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" obligatorio=True multiple=True %}
                 {% include "conciliacion/_archivo.html" with campo="transbank" titulo="Transbank" icono="credit-card" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" obligatorio=True multiple=True %}
                 {% include "conciliacion/_archivo.html" with campo="cartola" titulo="Cartola bancaria" icono="landmark" acepta=".xls,.xlsx,.xlsm,.ods,.csv" ayuda="" %}
             </div>

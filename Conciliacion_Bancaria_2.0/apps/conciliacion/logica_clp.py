@@ -7,18 +7,22 @@ que el total abonado por Transbank aparezca en la cartola del banco.
 Cómo se cruza cada venta de Transbank con el BORDERO (cada pago del BORDERO se usa
 una sola vez, y las pasadas van de la coincidencia más segura a la menos segura):
 
-1. Mismo código de autorización y mismo monto (tolerancia de redondeo).
-2. Código parecido (ceros a la izquierda, "I" por "1", "O" por "0") y mismo monto.
-3. Mismo código de autorización pero distinto monto: diferencia de monto.
-4. Sin código, pero mismo monto y misma fecha: se concilia y se marca para revisar.
-5. Lo que queda: sin registro en el BORDERO (o fuera del período del BORDERO).
+1. Mismo código de autorización, mismo monto (tolerancia de redondeo) y fecha cercana.
+2. Código parecido (ceros a la izquierda, "I" por "1", "O" por "0"), mismo monto y fecha cercana.
+3. Otro código, pero mismo monto y misma fecha: se concilia y se marca para revisar.
+4. Mismo código y fecha cercana, pero distinto monto: diferencia de monto.
+5. Mismo código y monto, pero en otra fecha: se concilia y se marca para revisar.
+6. Lo que queda: sin registro en el BORDERO (o fuera del período del BORDERO).
+
+Si varios pagos sirven, se elige el de fecha más cercana a la venta. Fecha cercana es hasta
+VENTANA_DIAS días: un BORDERO largo repite códigos cortos, así que el código solo no basta.
 
 Todo el estado es local a cada llamada: no hay variables globales.
 """
 import hashlib
 import re
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from itertools import combinations
 from datetime import date, datetime
 from io import BytesIO
@@ -33,6 +37,7 @@ from . import lectura
 from .bines import SIN_IDENTIFICAR, agrupar, bin_de, identificar_local
 
 TOLERANCIA = 10  # pesos: diferencias de redondeo entre el FrontOffice y Transbank
+VENTANA_DIAS = 3  # días entre la venta y el pago para considerarlos del mismo movimiento (los códigos se repiten en el año)
 
 # Campo del formulario -> (medio de pago, nombre visible)
 # Campos antiguos del formulario (un archivo por medio). Se siguen aceptando; hoy basta con
@@ -60,6 +65,7 @@ CODIGOS_TARJETA_CLP = {
     "AME$": "Amex",
     "DIN$": "Diners",
     "DI$": "Diners",
+    "D$": "Diners",
     "RCO": "Redcompra",
 }
 # Respaldo para códigos de tarjeta nuevos que no estén en CODIGOS_TARJETA_CLP: la descripción debe
@@ -180,12 +186,13 @@ def periodo_del_encabezado(raw):
     return (min(fechas), max(fechas)) if len(fechas) >= 2 else None
 
 
-def leer_bordero(archivo):
-    """Pagos con tarjeta en pesos del BORDERO, sin anulaciones compensadas."""
+def _pagos_de_bordero(archivo):
+    """(pagos con tarjeta en pesos, período) de un archivo BORDERO, sin anulaciones compensadas."""
+    nombre = getattr(archivo, "name", "archivo")
     raw = _leer(archivo, _es_encabezado_bordero)
     fila = _buscar_fila(raw, _es_encabezado_bordero)
     if fila is None:
-        raise ArchivoInvalido("El BORDERO no tiene la fila de encabezados (Cod. Deb., Valor, Documento).")
+        raise ArchivoInvalido(f"El BORDERO {nombre} no tiene la fila de encabezados (Cod. Deb., Valor, Documento).")
     encabezado = [_texto(v) for v in raw.iloc[fila].tolist()]
     col = {nombre: encabezado.index(nombre) for nombre in ("Cod. Deb.", "Descripción", "Valor", "Documento", "Fecha", "Cuenta", "Usuario") if nombre in encabezado}
 
@@ -206,6 +213,7 @@ def leer_bordero(archivo):
         if not es_tarjeta:
             continue
         pagos.append({
+            "archivo": nombre,
             "fila": i + 1,
             "cod": cod,
             "tarjeta": CODIGOS_TARJETA_CLP.get(cod, desc),
@@ -217,9 +225,6 @@ def leer_bordero(archivo):
             "cuenta": _texto(raw.iat[i, col["Cuenta"]]) if "Cuenta" in col else "",
             "usuario": _texto(raw.iat[i, col["Usuario"]]) if "Usuario" in col else "",
         })
-
-    if not pagos:
-        raise ArchivoInvalido("El BORDERO no tiene pagos con tarjeta en pesos (Visa $, Master Card $, Amex $, Red Compra).")
 
     # Una anulación (monto negativo) cancela un pago igual con el mismo código.
     anulados = set()
@@ -233,6 +238,54 @@ def leer_bordero(archivo):
     if periodo is None:
         fechas = [p["fecha"] for p in pagos if p["fecha"]]
         periodo = (min(fechas), max(fechas)) if fechas else None
+    return pagos, periodo
+
+
+def _clave_pago(p):
+    """Identifica un pago para no contarlo dos veces si viene en dos archivos."""
+    return (p["cod"], p["documento"], p["monto"], p["fecha"], p["cuenta"])
+
+
+def leer_borderos(archivos):
+    """Junta uno o varios BORDERO, por ejemplo uno por tarjeta.
+
+    Devuelve (pagos, período, nombres de archivos repetidos, pagos repetidos entre archivos).
+    El período va desde la fecha más antigua hasta la más nueva de todos los archivos. Un archivo
+    subido dos veces se lee una sola vez, y un pago que viene en dos archivos se cuenta una vez;
+    los pagos iguales dentro de un mismo archivo se mantienen, porque son movimientos distintos.
+    """
+    pagos, periodos, repetidos = [], [], []
+    huellas, vistos = set(), Counter()
+    pagos_repetidos = 0
+    for archivo in archivos:
+        archivo.seek(0)
+        huella = hashlib.sha256(archivo.read()).hexdigest()
+        archivo.seek(0)
+        if huella in huellas:
+            repetidos.append(getattr(archivo, "name", "archivo"))
+            continue
+        huellas.add(huella)
+        propios, periodo = _pagos_de_bordero(archivo)
+        if periodo:
+            periodos.append(periodo)
+        conteo = Counter()
+        for p in propios:
+            clave = _clave_pago(p)
+            conteo[clave] += 1
+            if conteo[clave] > vistos[clave]:
+                pagos.append(p)
+            else:
+                pagos_repetidos += 1
+        vistos |= conteo
+    if not pagos:
+        raise ArchivoInvalido("El BORDERO no tiene pagos con tarjeta en pesos (Visa $, Master Card $, Amex $, Red Compra).")
+    periodo = (min(d for d, _ in periodos), max(h for _, h in periodos)) if periodos else None
+    return pagos, periodo, repetidos, pagos_repetidos
+
+
+def leer_bordero(archivo):
+    """Pagos con tarjeta en pesos de un solo BORDERO: (pagos, período)."""
+    pagos, periodo, _, _ = leer_borderos([archivo])
     return pagos, periodo
 
 
@@ -448,11 +501,15 @@ def _cruzar(ventas, pagos, periodo):
         por_flex[p["codigo_flex"]].append(idx)
         por_fecha[p["fecha"]].append(idx)
 
-    def libre(indices, condicion):
-        for idx in indices:
-            if idx not in usados and condicion(pagos[idx]):
-                return idx
-        return None
+    def dias(venta, pago):
+        if venta["fecha"] is None or pago["fecha"] is None:
+            return 0
+        return abs((venta["fecha"] - pago["fecha"]).days)
+
+    def libre(venta, indices, condicion):
+        """Pago sin usar que cumple la condición, el de fecha más cercana a la venta."""
+        opciones = [idx for idx in indices if idx not in usados and condicion(pagos[idx])]
+        return min(opciones, key=lambda idx: dias(venta, pagos[idx]), default=None)
 
     def asignar(venta, idx, estado, nota):
         usados.add(idx)
@@ -472,20 +529,26 @@ def _cruzar(ventas, pagos, periodo):
         return periodo is None or (v["fecha"] is not None and periodo[0] <= v["fecha"] <= periodo[1])
 
     cerca = lambda v: lambda p: abs(p["monto"] - v["monto"]) <= TOLERANCIA  # noqa: E731
-    # Un código repetido con otro monto solo cuenta si la venta cae dentro del período del BORDERO.
-    mismo_codigo_en_periodo = lambda v: lambda p: en_periodo(v)  # noqa: E731
+    cerca_y_en_fecha = lambda v: lambda p: cerca(v)(p) and dias(v, p) <= VENTANA_DIAS  # noqa: E731
+    # Un código repetido con otro monto solo cuenta si la venta cae dentro del período del BORDERO
+    # y el pago es de esos días: en un BORDERO largo, el mismo código puede ser de otra venta.
+    mismo_codigo_en_fecha = lambda v: lambda p: en_periodo(v) and dias(v, p) <= VENTANA_DIAS  # noqa: E731
+    con_codigo = lambda v: por_codigo.get(v["codigo"], []) if v["codigo"] else []  # noqa: E731
+    con_flex = lambda v: por_flex.get(v["codigo_flex"], []) if v["codigo_flex"] else []  # noqa: E731
     pendientes = list(ventas)
 
+    # De la coincidencia más segura a la menos segura; cada venta toma la primera que le sirva.
     pasadas = [
-        (lambda v: por_codigo.get(v["codigo"], []) if v["codigo"] else [], cerca, "conciliado", ""),
-        (lambda v: por_flex.get(v["codigo_flex"], []) if v["codigo_flex"] else [], cerca, "conciliado", "Código digitado distinto en el BORDERO"),
-        (lambda v: por_codigo.get(v["codigo"], []) if v["codigo"] else [], mismo_codigo_en_periodo, "diferencia", "Mismo código, distinto monto"),
+        (con_codigo, cerca_y_en_fecha, "conciliado", ""),
+        (con_flex, cerca_y_en_fecha, "conciliado", "Código digitado distinto en el BORDERO"),
         (lambda v: por_fecha.get(v["fecha"], []), cerca, "conciliado", "Cruzado por monto y fecha: revisar código"),
+        (con_codigo, mismo_codigo_en_fecha, "diferencia", "Mismo código, distinto monto"),
+        (con_flex, cerca, "conciliado", "Mismo código y monto en otra fecha: revisar"),
     ]
     for candidatos, condicion, estado, nota in pasadas:
         siguientes = []
         for v in pendientes:
-            idx = libre(candidatos(v), condicion(v))
+            idx = libre(v, candidatos(v), condicion(v))
             if idx is None:
                 siguientes.append(v)
             else:
@@ -667,8 +730,9 @@ def _buscar_abonos(medios, liquidaciones, abonos_banco):
 
 def _archivos_usados(archivos, liquidaciones):
     usados = []
-    if archivos.get("bordero"):
-        usados.append("BORDERO")
+    borderos = _lista(archivos.get("bordero"))
+    if borderos:
+        usados.append("BORDERO (" + ", ".join(getattr(a, "name", "archivo") for a in borderos) + ")")
     if liquidaciones:
         usados.append("Transbank (" + ", ".join(liq["archivo"] for liq in liquidaciones) + ")")
     if archivos.get("cartola"):
@@ -681,7 +745,7 @@ def procesar(archivos, identificar=identificar_local):
 
     `identificar` recibe un conjunto de BIN y devuelve {bin: datos}; por defecto solo la marca.
     """
-    pagos, periodo = leer_bordero(archivos["bordero"])
+    pagos, periodo, borderos_repetidos, pagos_repetidos = leer_borderos(_lista(archivos["bordero"]))
     liquidaciones, repetidos = _leer_liquidaciones(archivos)
     abonos_banco = leer_cartola(archivos["cartola"]) if archivos.get("cartola") else None
 
@@ -720,6 +784,8 @@ def procesar(archivos, identificar=identificar_local):
         "abonos_faltantes": abonos_faltantes,
         "archivos_repetidos": repetidos,
         "ventas_repetidas": ventas_repetidas,
+        "borderos_repetidos": borderos_repetidos,
+        "pagos_repetidos": pagos_repetidos,
         "banco_cargado": abonos_banco is not None,
         "periodo_bordero": f"{periodo[0]:%d-%m-%Y} al {periodo[1]:%d-%m-%Y}" if periodo else "",
     }
@@ -841,7 +907,8 @@ def _excel_bordero(pagos):
     filas = [{**p, "fecha": p["fecha"].strftime("%d-%m-%Y") if p["fecha"] else ""} for p in pagos]
     _hoja_tabla(ws, "Pagos con tarjeta del BORDERO sin abono en estos archivos", [
         ("Fecha", "fecha", 12), ("Cód.", "cod", 8), ("Tarjeta", "tarjeta", 14), ("Documento", "documento", 14),
-        ("Monto", "monto", 14), ("Cuenta", "cuenta", 12), ("Usuario", "usuario", 14), ("Fila en BORDERO", "fila", 14),
+        ("Monto", "monto", 14), ("Cuenta", "cuenta", 12), ("Usuario", "usuario", 14),
+        ("Archivo BORDERO", "archivo", 30), ("Fila en BORDERO", "fila", 14),
     ], filas, "Pueden abonarse en otro día: revisa los abonos de los días siguientes.")
     return _guardar(wb)
 
@@ -884,6 +951,7 @@ def _excel_completo(resultado, ventas, pendientes, resumen):
     filas_b = [{**p, "fecha": p["fecha"].strftime("%d-%m-%Y") if p["fecha"] else ""} for p in pendientes]
     _hoja_tabla(ws3, "Pagos con tarjeta del BORDERO sin abono en estos archivos", [
         ("Fecha", "fecha", 12), ("Cód.", "cod", 8), ("Tarjeta", "tarjeta", 14), ("Documento", "documento", 14),
-        ("Monto", "monto", 14), ("Cuenta", "cuenta", 12), ("Usuario", "usuario", 14), ("Fila en BORDERO", "fila", 14),
+        ("Monto", "monto", 14), ("Cuenta", "cuenta", 12), ("Usuario", "usuario", 14),
+        ("Archivo BORDERO", "archivo", 30), ("Fila en BORDERO", "fila", 14),
     ], filas_b)
     return _guardar(wb)

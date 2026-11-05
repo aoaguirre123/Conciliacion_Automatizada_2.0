@@ -79,7 +79,7 @@ def _conciliar_dolares(request, archivos):
         else:
             resumen = resultado["resumen"]
             return _guardar_y_mostrar(request, Conciliacion.DOLARES, archivos, logica.NOMBRES_ARCHIVO,
-                                      resultado, reportes, resumen["cuadrado"], abs(resumen["diferencia_total"]))
+                                      resultado, reportes, resumen["cuadrado"], resumen["por_revisar"])
     return _pagina_dolares(request, errores)
 
 
@@ -94,6 +94,8 @@ def _pagina_dolares(request, errores=None):
 def dolares(request):
     if request.method == "POST":
         archivos = {f"archivo{n}": request.FILES.get(f"archivo{n}") for n in range(1, 8)}
+        # El ERP acepta uno o varios archivos: el BORDERO completo o uno por tarjeta.
+        archivos["archivo1"] = request.FILES.getlist("archivo1")
         return _conciliar_dolares(request, archivos)
     return _pagina_dolares(request)
 
@@ -106,6 +108,7 @@ def ejemplo_dolares(request):
     if por_campo is None:
         return _pagina_dolares(request, [SIN_EJEMPLOS.format(carpeta="ejemplos/dolares")])
     archivos = {campo: por_campo.get(campo, [None])[0] for campo in logica.NOMBRES_ARCHIVO}
+    archivos["archivo1"] = por_campo.get("archivo1", [])
     return _conciliar_dolares(request, archivos)
 
 
@@ -154,7 +157,8 @@ def _pagina_pesos(request, errores=None):
 def pesos(request):
     if request.method == "POST":
         archivos = {campo: request.FILES.get(campo) for campo in logica_clp.NOMBRES_ARCHIVO}
-        # Transbank acepta uno o varios archivos: separados por medio de pago o todos juntos.
+        # BORDERO y Transbank aceptan uno o varios archivos: por tarjeta o medio de pago, o todos juntos.
+        archivos["bordero"] = request.FILES.getlist("bordero")
         archivos["transbank"] = request.FILES.getlist("transbank")
         return _conciliar_pesos(request, archivos)
     return _pagina_pesos(request)
@@ -168,6 +172,7 @@ def ejemplo_pesos(request):
     if por_campo is None:
         return _pagina_pesos(request, [SIN_EJEMPLOS.format(carpeta="ejemplos/pesos")])
     archivos = {campo: por_campo.get(campo, [None])[0] for campo in logica_clp.NOMBRES_ARCHIVO}
+    archivos["bordero"] = por_campo.get("bordero", [])
     archivos["transbank"] = por_campo.get("transbank", [])
     return _conciliar_pesos(request, archivos)
 

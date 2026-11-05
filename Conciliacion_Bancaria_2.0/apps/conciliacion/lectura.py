@@ -32,6 +32,30 @@ FIRMA_ZIP = b"PK\x03\x04"  # .xlsx, .xlsm y .ods son archivos ZIP
 FIRMAS_BIFF = (b"\x09\x00", b"\x09\x02", b"\x09\x04", b"\x09\x08")
 
 
+def _permitir_xls_largos():
+    """Quita el tope de 16.384 filas de xlrd para los Excel antiguos (anteriores a Excel 97).
+
+    Ese es el máximo del formato original, pero el FrontOffice exporta en él reportes más largos
+    (el BORDERO completo de un mes pasa las 24.000 filas). xlrd no tiene una opción para esto:
+    el tope es un atributo de cada hoja, y sin él lee estos archivos sin problema. El archivo
+    guarda la fila en 2 bytes, así que 65.536 es el máximo real.
+    """
+    try:
+        from xlrd.sheet import Sheet
+    except ImportError:  # sin xlrd, leer_hojas avisa qué paquete falta
+        return
+    iniciar_hoja = Sheet.__init__
+
+    def iniciar(self, *args, **kwargs):
+        iniciar_hoja(self, *args, **kwargs)
+        self.utter_max_rows = 65536
+
+    Sheet.__init__ = iniciar
+
+
+_permitir_xls_largos()
+
+
 def normalizar(texto):
     """Texto en minúsculas, sin tildes ni espacios repetidos, para comparar encabezados."""
     if texto is None or (isinstance(texto, float) and pd.isna(texto)):
@@ -135,7 +159,8 @@ def _leer_excel(datos, motor, nombre):
             "o guarda el archivo como .xlsx."
         ) from exc
     except Exception as exc:  # noqa: BLE001 - archivo dañado o protegido con contraseña
-        raise FormatoNoSoportado(f"No se pudo abrir {nombre}: {exc}") from exc
+        motivo = str(exc) or "el archivo está dañado o tiene un formato no compatible."
+        raise FormatoNoSoportado(f"No se pudo abrir {nombre}: {motivo}") from exc
     return [(hoja, df) for hoja, df in hojas.items() if not df.empty] or [("Hoja1", pd.DataFrame())]
 
 

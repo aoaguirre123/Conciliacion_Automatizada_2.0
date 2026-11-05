@@ -43,6 +43,17 @@
     </div>
     {% endif %}
 
+    {% if resumen.borderos_repetidos or resumen.pagos_repetidos %}
+    <div class="aviso aviso--info" role="status">
+        <i data-lucide="copy" aria-hidden="true"></i>
+        <div>
+            <strong>Se ignoraron datos repetidos del BORDERO</strong>
+            {% if resumen.borderos_repetidos %}<p>Archivo{{ resumen.borderos_repetidos|length|pluralize }} cargado{{ resumen.borderos_repetidos|length|pluralize }} más de una vez: {{ resumen.borderos_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
+            {% if resumen.pagos_repetidos %}<p>{{ resumen.pagos_repetidos }} pago{{ resumen.pagos_repetidos|pluralize }} venía{{ resumen.pagos_repetidos|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     {% if resumen.fuera_periodo %}
     <div class="aviso aviso--info" role="status">
         <i data-lucide="calendar-range" aria-hidden="true"></i>

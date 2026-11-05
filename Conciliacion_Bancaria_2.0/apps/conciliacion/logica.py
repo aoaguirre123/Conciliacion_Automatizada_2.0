@@ -3,8 +3,28 @@
 No depende de las vistas: recibe los archivos subidos y devuelve los datos para la
 pantalla y los Excel de descarga. Las listas de trabajo son de módulo (herencia del
 código original), por eso cada análisis se ejecuta con un candado.
+
+Cómo se cruza cada venta de Transbank con el ERP. Cada pago del ERP se usa una sola vez, debe ser
+de la misma tarjeta y las pasadas van de la coincidencia más segura a la menos segura. El monto en
+dólares del pago sale de la cartola de la tarjeta (el ERP lo tiene en pesos):
+
+1. Mismo código, mismo monto (tolerancia de redondeo) y fecha cercana.
+2. Mismo código y fecha cercana, en varios documentos que juntos suman el monto.
+3. Código parecido (ceros a la izquierda, "I" por "1", "O" por "0"), mismo monto y fecha cercana.
+4. Mismo código y fecha cercana, con otro monto: diferencia de monto.
+5. Código parecido y fecha cercana, con otro monto: diferencia de monto.
+6. Otro código, pero mismo monto y misma fecha: se vincula y se marca para revisar.
+7. Código parecido y mismo monto en otra fecha: se vincula y se marca para revisar.
+8. Lo que queda: sin registro en el ERP.
+
+Si varios pagos sirven, se elige el de fecha más cercana y luego el de monto más cercano. Las
+pasadas 4 y 5 van antes que la 6 porque Transbank suele redondear a dólares enteros: un código con
+su fecha pesa más que un monto parecido de otro código.
 """
+import hashlib
+import re
 import threading
+from collections import Counter, defaultdict
 from io import BytesIO
 
 import pandas as pd
@@ -31,6 +51,7 @@ COLS_TBK = list(range(1, 11))
 COLS_BANCO = list(range(1, 9))
 COLS_TARJETA = list(range(1, 15))
 TOLERANCIA_USD = 0.005  # para comparar montos con decimales leídos de formatos distintos
+TOLERANCIA_REDONDEO_USD = 0.10  # dólares: hasta aquí, una diferencia entre Transbank y la cartola es redondeo
 COLS_MONTOS = ("Unnamed: 12", "Unnamed: 13", "Unnamed: 14")  # otra moneda, saldo, saldo corregido
 
 NOMBRES_TARJETA = ["Amex US$", "Dinners US$", "Master Card US$", "Visa US$"]
@@ -99,6 +120,61 @@ class LectorExcel:
         return self._tablas[clave].copy()
 
 
+def _clave_fila(valores):
+    """Fila del ERP como texto, para reconocerla si viene repetida en otro archivo.
+    Un mismo número puede leerse como 107093 o 107093.0 según el resto de la columna."""
+    return tuple("" if pd.isna(v) else _texto_codigo(v) for v in valores)
+
+
+def _juntar_erp(archivos, lector):
+    """Junta uno o varios ERP en una sola tabla, por ejemplo un BORDERO por tarjeta.
+
+    Devuelve (tabla, nombres de archivos repetidos, filas repetidas entre archivos). Un archivo
+    subido dos veces se lee una sola vez, y una fila que viene en dos archivos se cuenta una vez
+    (por ejemplo, si se carga el BORDERO completo junto con los de cada tarjeta). Las filas iguales
+    dentro de un mismo archivo se mantienen, porque son movimientos distintos. Solo se comparan los
+    movimientos: los encabezados de página y los totales se repiten en todos los archivos.
+    """
+    tablas, repetidos, huellas = [], [], set()
+    vistas, filas_repetidas = Counter(), 0
+    columnas = [f"Unnamed: {c}" for c in COLS_ERP]
+    for archivo in archivos:
+        huella = hashlib.sha256(lectura._bytes(archivo)).hexdigest()
+        if huella in huellas:
+            repetidos.append(getattr(archivo, "name", "archivo"))
+            continue
+        huellas.add(huella)
+        tabla = lector.leer(archivo, COLS_ERP)
+        conteo, conservar = Counter(), []
+        for valores in tabla[columnas].itertuples(index=False):
+            if lectura.numero(valores[7]) is None:  # columna 8, Valor: sin monto no es un movimiento
+                conservar.append(True)
+                continue
+            clave = _clave_fila(valores)
+            conteo[clave] += 1
+            nueva = conteo[clave] > vistas[clave]
+            conservar.append(nueva)
+            filas_repetidas += not nueva
+        vistas |= conteo
+        tablas.append(tabla[conservar])
+    return pd.concat(tablas, ignore_index=True), repetidos, filas_repetidas
+
+
+def _erp(archivos, lector):
+    """Tabla del ERP (uno o varios archivos, ver _juntar_erp). Se arma una sola vez por análisis."""
+    if "erp" not in lector._tablas:
+        lector._tablas["erp"] = _juntar_erp(logica_clp._lista(archivos["archivo1"]), lector)
+    return lector._tablas["erp"][0].copy()
+
+
+def _pagos_us(erp):
+    """Solo las filas de pagos con tarjeta en dólares. El BORDERO completo trae todos los movimientos
+    del hotel, y el código de una venta puede aparecer en otras filas (por ejemplo «Venta:303742» en
+    un consumo del bar), que no son el pago de esa venta."""
+    es_pago = erp["Unnamed: 5"].map(lambda d: any(pago in lectura.normalizar(d) for pago in PAGOS_US))
+    return erp[es_pago.astype(bool)]
+
+
 def _num(valor, por_defecto=0.0):
     """Monto como float aunque venga como texto ('1.234,56', '$ 1.234'); por_defecto si está vacío."""
     resultado = lectura.numero(valor)
@@ -162,15 +238,13 @@ def _codigo_normalizado(texto):
     return str(texto).strip().upper().lstrip("0")
 
 
-def _coincide_codigo(serie, codigo):
-    """Filas del ERP cuyo documento contiene el código (como el código original) o es el mismo
-    código sin ceros a la izquierda (Transbank entrega «088459» y el BORDERO «88459»)."""
-    texto = _texto_codigo(codigo)
-    contiene = serie.str.contains(texto, na=False, case=False, regex=False)
-    normalizado = _codigo_normalizado(texto)
-    if not normalizado:
-        return contiene
-    return contiene | (serie.map(_codigo_normalizado) == normalizado)
+def _partes_codigo(documento):
+    """Códigos que trae el Documento del ERP, sin ceros a la izquierda (Transbank entrega «088459» y
+    el ERP «88459»). Se compara cada código completo: «00 DUAL 00819067» trae 819067, pero 135870 no trae 3587."""
+    if pd.isna(documento):
+        return set()
+    partes = map(_codigo_normalizado, re.split(r"[^0-9A-Za-z]+", _texto_codigo(documento)))
+    return {parte for parte in partes if parte}
 
 
 def _limpiar_resultados():
@@ -250,6 +324,16 @@ def _mismo_documento(tabla, documento):
     return tabla["_doc"] == buscado
 
 
+def _montos_tarjeta(fila):
+    """Otra moneda, saldo y saldo corregido de una fila de la posición por cliente.
+    En los montos chicos el archivo los trae una columna a la derecha: Otra Moneda vacía,
+    los dólares en Saldo y los pesos en Saldo Corregido."""
+    otra_moneda, saldo, saldo_corregido = (fila[columna] for columna in COLS_MONTOS)
+    if lectura.numero(otra_moneda) is None and lectura.numero(saldo) is not None and lectura.numero(saldo_corregido) is not None:
+        return saldo, saldo_corregido, None
+    return otra_moneda, saldo, saldo_corregido
+
+
 def _comparar_con_tarjeta(df_tarjeta, codigo_erp, valor_erp, monto_original, nombre):
     """Misma lógica que los 4 bloques DI / VI / MC / AX del código antiguo."""
     datos = {}
@@ -259,13 +343,11 @@ def _comparar_con_tarjeta(df_tarjeta, codigo_erp, valor_erp, monto_original, nom
 
     encontro = False
     for idx in coincidencias.index:
-        otra_moneda = coincidencias.at[idx, "Unnamed: 12"]
-        saldo = coincidencias.at[idx, "Unnamed: 13"]
-        saldo_corregido = coincidencias.at[idx, "Unnamed: 14"]
+        otra_moneda, saldo, saldo_corregido = _montos_tarjeta(coincidencias.loc[idx])
 
         if _iguales(monto_original, otra_moneda):
             datos["status"] = f"El monto original {monto_original} coincide con OTRA MONEDA {otra_moneda}"
-            datos["monto_transbank"] = otra_moneda
+            datos["monto_cartola"] = otra_moneda
 
         if _iguales(saldo, valor_erp):
             datos["observacion"] = f"El valor ERP {valor_erp} coincide con SALDO {saldo}"
@@ -275,8 +357,7 @@ def _comparar_con_tarjeta(df_tarjeta, codigo_erp, valor_erp, monto_original, nom
             encontro = True
 
         if encontro:
-            datos["diferencia"] = _num(monto_original) - _num(otra_moneda)
-            datos["monto_transbank"] = otra_moneda
+            datos["monto_cartola"] = otra_moneda
             break
 
     if not encontro:
@@ -291,57 +372,225 @@ def _texto_codigo(codigo):
     return str(codigo).strip()
 
 
-def _conciliar_transbank_con_erp(archivos, lector, identificar=identificar_local):
-    tbk = leer_transbank(archivos["archivo7"], lector, identificar)[0]
-    erp = lector.leer(archivos["archivo1"], COLS_ERP)
-    erp["Unnamed: 9"] = erp["Unnamed: 9"].fillna(0).astype(str).str.strip()
+def _pagos_erp(archivos, lector):
+    """Pagos con tarjeta en dólares del ERP, sin las reversas: un movimiento positivo es el reverso
+    de un pago igual con el mismo código, y ninguno de los dos cuenta."""
+    pagos = []
+    for _, fila in _pagos_us(_erp(archivos, lector)).iterrows():
+        valor = lectura.numero(fila["Unnamed: 8"])
+        if valor:
+            pagos.append({
+                "partes": _partes_codigo(fila["Unnamed: 9"]),
+                "tarjeta": _codigo_marca(fila["Unnamed: 5"]),
+                "cuenta": fila["Unnamed: 3"],
+                "valor": valor,
+                "fecha": logica_clp._fecha(fila["Unnamed: 10"]),
+            })
+    anulados = set()
+    for i, reverso in enumerate(pagos):
+        if reverso["valor"] > 0:
+            anulados.add(i)
+            pago = next((j for j, p in enumerate(pagos) if j not in anulados and p["valor"] == -reverso["valor"]
+                         and p["partes"] == reverso["partes"]), None)
+            if pago is not None:
+                anulados.add(pago)
+    return [p for i, p in enumerate(pagos) if i not in anulados]
 
+
+def _ventas_transbank(archivos, lector, identificar):
+    """Ventas de Transbank por conciliar. Una venta sin marca reconocida también se concilia:
+    se busca en los pagos de todas las tarjetas y toma la marca del pago que le corresponda."""
+    tbk = leer_transbank(archivos["archivo7"], lector, identificar)[0]
+    ventas = []
     for fila in tbk.index:
         tipo_tarjeta = tbk.at[fila, "Unnamed: 3"]
         monto_original = tbk.at[fila, "Unnamed: 6"]
         codigo_autorizacion = tbk.at[fila, "Unnamed: 7"]
         fecha_venta = tbk.at[fila, "Unnamed: 2"]
 
-        if pd.isna(codigo_autorizacion) or tipo_tarjeta not in TARJETAS_TBK:
+        # Las filas sin código o sin monto son encabezados y totales del reporte.
+        if pd.isna(codigo_autorizacion) or lectura.numero(monto_original) is None:
             continue
 
-        reg = {
-            "codigo_autorizacion": codigo_autorizacion,
-            "documento": "",
-            "monto_original": monto_original,
-            "monto_transbank": "",
-            "diferencia": "",
-            "fecha_venta": fecha_venta,
-            "tipo_tarjeta": tipo_tarjeta,
-            "status": "",
-            "observacion": "",
-            "extra": "OK",
-        }
+        codigo = _texto_codigo(codigo_autorizacion)
+        ventas.append({
+            "codigo": _codigo_normalizado(codigo),
+            "flex": logica_clp._codigo_flexible(codigo),
+            "fecha": logica_clp._fecha(fecha_venta),
+            "monto": _num(monto_original),
+            "sin_marca": tipo_tarjeta not in TARJETAS_TBK,
+            "reg": {
+                "codigo_autorizacion": codigo_autorizacion,
+                "documento": "",
+                "monto_original": monto_original,
+                "monto_cartola": "",
+                "diferencia": "",
+                "fecha_venta": fecha_venta,
+                "tipo_tarjeta": tipo_tarjeta,
+                "status": "",
+                "observacion": "",
+                "nota": "",
+                "extra": "OK",
+                "estado": "",
+                "valor_erp": 0,
+                "sin_marca": tipo_tarjeta not in TARJETAS_TBK,
+            },
+        })
+    return ventas
 
-        find_erp = erp[_coincide_codigo(erp["Unnamed: 9"], codigo_autorizacion)]
-        if find_erp.empty:
-            reg["status"] = f"NO ENCONTRO EL CODIGO : {codigo_autorizacion} CUYO VALOR ES DE {monto_original} "
-            reg["extra"] = "NO"
-            informacion_proceso.append(reg)
-            continue
 
-        codigo_erp = find_erp.iloc[0]["Unnamed: 3"]
-        valor_erp = _entero(find_erp.iloc[0]["Unnamed: 8"])
-        reg["documento"] = codigo_erp
+def _cruzar_con_erp(ventas, pagos, en_cartola):
+    """Vincula cada venta con su pago del ERP y llena su registro (ver las pasadas al inicio del módulo).
 
-        campo, nombre = TARJETAS_TBK[tipo_tarjeta]
-        archivo_tarjeta = archivos[campo]
-        if archivo_tarjeta is None:
-            reg["status"] = f"NO SE CARGO EL ARCHIVO DE {nombre}"
+    `en_cartola(pago, monto)` entrega lo que dice la cartola de la tarjeta sobre ese pago.
+    """
+    usados = set()
+    por_codigo, por_flex, por_fecha = defaultdict(list), defaultdict(list), defaultdict(list)
+    for idx, p in enumerate(pagos):
+        for parte in p["partes"]:
+            por_codigo[parte].append(idx)
+            por_flex[logica_clp._codigo_flexible(parte)].append(idx)
+        por_fecha[p["fecha"]].append(idx)
+
+    def dolares(v, idx):
+        datos = en_cartola(pagos[idx], v["monto"])
+        return _num(datos["monto_cartola"]) if "monto_cartola" in datos else None
+
+    def dias(v, idx):
+        if v["fecha"] is None or pagos[idx]["fecha"] is None:
+            return 0
+        return abs((v["fecha"] - pagos[idx]["fecha"]).days)
+
+    def cerca(v, idx):
+        monto = dolares(v, idx)
+        return monto is not None and _es_redondeo(v["monto"] - monto)
+
+    def en_fecha(v, idx):
+        return dias(v, idx) <= logica_clp.VENTANA_DIAS
+
+    def libres(v, indices):
+        """Pagos sin usar de la tarjeta de la venta (de cualquiera, si la venta no tiene marca)."""
+        return [i for i in dict.fromkeys(indices) if i not in usados and (v["sin_marca"] or pagos[i]["tarjeta"] == v["reg"]["tipo_tarjeta"])]
+
+    def elegir(v, indices, condicion):
+        opciones = [i for i in libres(v, indices) if condicion(v, i)]
+        if not opciones:
+            return None
+        return [min(opciones, key=lambda i: (dias(v, i), abs(v["monto"] - (dolares(v, i) or 0))))]
+
+    def dividido(v):
+        """Varios documentos con el mismo código y fecha cercana que juntos suman el monto de la venta."""
+        opciones = [i for i in libres(v, por_codigo.get(v["codigo"], [])) if en_fecha(v, i)]
+        montos = [dolares(v, i) for i in opciones]
+        if len(opciones) > 1 and None not in montos and _es_redondeo(v["monto"] - sum(montos)):
+            return opciones
+        return None
+
+    con_codigo = lambda v: por_codigo.get(v["codigo"], [])  # noqa: E731
+    con_flex = lambda v: por_flex.get(v["flex"], [])  # noqa: E731
+    codigo_digitado = "Código digitado distinto en el ERP"
+    pasadas = [
+        (lambda v: elegir(v, con_codigo(v), lambda v, i: en_fecha(v, i) and cerca(v, i)), ""),
+        (dividido, "Pago dividido en varios documentos"),
+        (lambda v: elegir(v, con_flex(v), lambda v, i: en_fecha(v, i) and cerca(v, i)), codigo_digitado),
+        (lambda v: elegir(v, con_codigo(v), en_fecha), ""),
+        (lambda v: elegir(v, con_flex(v), en_fecha), codigo_digitado),
+        (lambda v: elegir(v, por_fecha.get(v["fecha"], []) if v["fecha"] else [], cerca), "Cruzado por monto y fecha: revisar código"),
+        (lambda v: elegir(v, con_flex(v), cerca), "Mismo código y monto en otra fecha: revisar"),
+    ]
+
+    pendientes = list(ventas)
+    for buscar, nota in pasadas:
+        siguientes = []
+        for v in pendientes:
+            indices = buscar(v)
+            if indices is None:
+                siguientes.append(v)
+            else:
+                usados.update(indices)
+                _llenar_ubicada(v, [pagos[i] for i in indices], [dolares(v, i) for i in indices], en_cartola, nota)
+        pendientes = siguientes
+    return pendientes, por_codigo
+
+
+def _es_redondeo(diferencia):
+    return round(abs(diferencia), 2) <= TOLERANCIA_REDONDEO_USD
+
+
+def _llenar_ubicada(venta, pagos, montos, en_cartola, nota):
+    reg = venta["reg"]
+    reg.update(en_cartola(pagos[0], venta["monto"]))
+    reg["documento"] = pagos[0]["cuenta"] if len(pagos) == 1 else " + ".join(str(p["cuenta"]) for p in pagos)
+    reg["valor_erp"] = sum(_entero(p["valor"]) for p in pagos)
+    if venta["sin_marca"]:
+        reg["tipo_tarjeta"] = pagos[0]["tarjeta"]
+
+    notas = [nota] if nota else []
+    if venta["sin_marca"]:
+        notas.append("Marca de la tarjeta tomada del ERP")
+    if montos[0] is None:
+        # El documento no está en la cartola, o no cuadra en pesos: no hay dólares con qué comparar.
+        reg["status"] = reg["status"] or f"EL DOCUMENTO {pagos[0]['cuenta']} NO ESTA EN LA CARTOLA DE LA TARJETA"
+        reg.update(monto_cartola=0.0, diferencia=round(venta["monto"], 2), estado="diferencia")
+        notas.append("Sin monto en la cartola de la tarjeta")
+    else:
+        monto_cartola = round(sum(m for m in montos if m is not None), 2)
+        diferencia = round(venta["monto"] - monto_cartola, 2)
+        reg.update(monto_cartola=monto_cartola, diferencia=diferencia)
+        if not _es_redondeo(diferencia):
+            reg["estado"] = "diferencia"
+            notas.append("Diferencia de monto")
+        elif diferencia:
+            reg["estado"] = "redondeo"
+            notas.append("Diferencia de redondeo")
         else:
-            df_tarjeta = lector.leer(archivo_tarjeta, COLS_TARJETA)
-            reg.update(_comparar_con_tarjeta(df_tarjeta, codigo_erp, valor_erp, monto_original, nombre))
+            reg["estado"] = "conciliada"
+    reg["nota"] = "; ".join(notas)
 
-        informacion_proceso.append(reg)
+
+def _llenar_sin_registro(venta, pagos, por_codigo, periodo):
+    reg = venta["reg"]
+    reg["status"] = f"NO ENCONTRO EL CODIGO : {reg['codigo_autorizacion']} CUYO VALOR ES DE {reg['monto_original']} "
+    reg["extra"] = "NO"
+    dentro = periodo is None or (venta["fecha"] is not None and periodo[0] <= venta["fecha"] <= periodo[1])
+    reg["estado"] = "sin_registro" if dentro else "fuera_periodo"
+
+    mismos = [pagos[i] for i in por_codigo.get(venta["codigo"], [])]
+    notas = []
+    if venta["sin_marca"]:
+        notas.append("Marca de la tarjeta no identificada")
+    if not dentro:
+        notas.append("La venta es de una fecha que el ERP no cubre")
+    if any(p["tarjeta"] != reg["tipo_tarjeta"] for p in mismos) and not venta["sin_marca"]:
+        notas.append("El código está en un pago de otra tarjeta")
+    elif mismos:
+        notas.append("El código está en el ERP, pero en otra fecha o usado por otra venta")
+    reg["nota"] = "; ".join(notas)
+
+
+def _conciliar_transbank_con_erp(archivos, lector, identificar=identificar_local):
+    ventas = _ventas_transbank(archivos, lector, identificar)
+    pagos = _pagos_erp(archivos, lector)
+    cartolas = {
+        codigo: lector.leer(archivos[campo], COLS_TARJETA) if archivos[campo] else None
+        for codigo, (campo, _) in TARJETAS_TBK.items()
+    }
+
+    def en_cartola(pago, monto):
+        nombre = TARJETAS_TBK[pago["tarjeta"]][1]
+        if cartolas[pago["tarjeta"]] is None:
+            return {"status": f"NO SE CARGO EL ARCHIVO DE {nombre}"}
+        return _comparar_con_tarjeta(cartolas[pago["tarjeta"]], pago["cuenta"], _entero(pago["valor"]), monto, nombre)
+
+    pendientes, por_codigo = _cruzar_con_erp(ventas, pagos, en_cartola)
+    periodo = _periodo(archivos, lector, identificar)
+    for venta in pendientes:
+        _llenar_sin_registro(venta, pagos, por_codigo, periodo)
+    informacion_proceso.extend(v["reg"] for v in ventas)
 
 
 # ---------------------------------------------------------------------------
-# 3) ERP -> archivos Amex / Master Card (Dinners y Visa estaban comentados)
+# 3) ERP -> cartola de cada tarjeta: el documento debe estar y con el mismo monto
 # ---------------------------------------------------------------------------
 def _valor_en_columnas(filas, valor_buscado):
     for idx in filas.index:
@@ -354,28 +603,27 @@ def _valor_en_columnas(filas, valor_buscado):
 
 def _procesar_erp(archivos, lector):
     diccionario = {}
-    erp = lector.leer(archivos["archivo1"], COLS_ERP)
-    amex = lector.leer(archivos["archivo2"], COLS_TARJETA) if archivos["archivo2"] else None
-    mc = lector.leer(archivos["archivo5"], COLS_TARJETA) if archivos["archivo5"] else None
+    erp = _erp(archivos, lector)
+    cartolas = {
+        CODIGO_A_NOMBRE[codigo]: lector.leer(archivos[campo], COLS_TARJETA) if archivos[campo] else None
+        for codigo, (campo, _) in TARJETAS_TBK.items()
+    }
 
     for i, fila in enumerate(erp.index, start=1):
         codigo_buscar = erp.at[fila, "Unnamed: 3"]
         monto_erp = erp.at[fila, "Unnamed: 8"]
-        texto = f"{i} - {codigo_buscar} - {erp.at[fila, 'Unnamed: 5']} - {monto_erp}"
-        if "US$" not in texto or lectura.numero(monto_erp) is None:
+        descripcion = lectura.normalizar(erp.at[fila, "Unnamed: 5"])
+        if lectura.numero(monto_erp) is None or not any(pago in descripcion for pago in PAGOS_US):
+            continue
+
+        tarjeta = CODIGO_A_NOMBRE[_codigo_marca(descripcion)]
+        cartola = cartolas[tarjeta]
+        if cartola is None:
             continue
 
         valor_buscado = _entero(monto_erp)
         fecha_erp = erp.at[fila, "Unnamed: 10"]
-
-        if "Amex US$" in texto and amex is not None:
-            tarjeta = "Amex US$"
-            encontrado = _mismo_documento(amex, codigo_buscar).any()
-        elif "Master Card US$" in texto and mc is not None:
-            tarjeta = "Master Card US$"
-            encontrado = _valor_en_columnas(mc[_mismo_documento(mc, codigo_buscar)], valor_buscado)
-        else:
-            continue
+        encontrado = _valor_en_columnas(cartola[_mismo_documento(cartola, codigo_buscar)], valor_buscado)
 
         documento = _entero(codigo_buscar) if lectura.numero(codigo_buscar) is not None else str(codigo_buscar)
         diccionario[str(i)] = {
@@ -388,42 +636,6 @@ def _procesar_erp(archivos, lector):
             _registrar_no_ubicado(tarjeta, documento, valor_buscado, fecha_erp)
 
     return diccionario
-
-
-# ---------------------------------------------------------------------------
-# 4) Transbank vs ERP por código de autorización (para la tabla "Resumen general")
-# ---------------------------------------------------------------------------
-def _transbank_vs_erp(archivos, lector, identificar=identificar_local):
-    resultado = {}
-    tbk = leer_transbank(archivos["archivo7"], lector, identificar)[0]
-    erp = lector.leer(archivos["archivo1"], COLS_ERP)
-    codigos_erp = erp["Unnamed: 9"].map(str)
-
-    for i, fila in enumerate(tbk.index, start=1):
-        tipo_tarjeta = tbk.at[fila, "Unnamed: 3"]
-        monto_original = tbk.at[fila, "Unnamed: 6"]
-        codigo_aut = tbk.at[fila, "Unnamed: 7"]
-
-        coincide = pd.Series(dtype=bool)
-        if not pd.isna(tipo_tarjeta):
-            coincide = _coincide_codigo(codigos_erp, codigo_aut)
-
-        if coincide.any():
-            ultima = coincide[coincide].index[-1]  # el código antiguo se quedaba con la última coincidencia
-            resultado[str(i)] = {
-                "tarjeta": tipo_tarjeta,
-                "codigo": str(codigo_aut),
-                "Valor": _entero(erp.at[ultima, "Unnamed: 8"]),
-                "Status": "encontrado",
-            }
-        else:
-            resultado[str(i)] = {
-                "tarjeta": tipo_tarjeta,
-                "codigo": codigo_aut,
-                "Valor": monto_original,
-                "Status": "no encontrado",
-            }
-    return resultado
 
 
 # ---------------------------------------------------------------------------
@@ -457,16 +669,27 @@ def _resumen_proceso(tabla_dolar):
     """Indicadores que se muestran arriba de los resultados."""
     diferencia = float(tabla_dolar[-1]["diferencia"]) if tabla_dolar else 0.0
     no_ubicadas = {tuple(r.values()) for r in informacion_proceso if r["extra"] == "NO"}
+    cuenta = lambda estado: sum(1 for r in informacion_proceso if r["estado"] == estado)  # noqa: E731
+    por_revisar = sum(abs(r["diferencia"]) for r in informacion_proceso if r["estado"] == "diferencia")
+    por_revisar += sum(abs(_num(r["monto_original"])) for r in informacion_proceso if r["estado"] == "sin_registro")
     return {
         "diferencia_total": diferencia,
-        "cuadrado": abs(diferencia) < 0.005,
+        "por_revisar": round(por_revisar, 2),
+        "cuadrado": round(por_revisar, 2) == 0,
         "ubicadas": sum(1 for r in informacion_proceso if r["extra"] == "OK"),
         "no_ubicadas": len(no_ubicadas),
         "erp_sin_tarjeta": len(documento_inf),
+        "conciliadas": cuenta("conciliada"),
+        "redondeo": cuenta("redondeo"),
+        "diferencias": cuenta("diferencia"),
+        "fuera_periodo": cuenta("fuera_periodo"),
+        "sin_marca": sum(1 for r in informacion_proceso if r["sin_marca"]),
+        "con_nota": sum(1 for r in informacion_proceso if r["extra"] == "OK" and "revisar" in r["nota"]),
+        "tolerancia_redondeo": TOLERANCIA_REDONDEO_USD,
     }
 
 
-def _resumen_general(diccionario, diccionario_2):
+def _resumen_general(diccionario):
     us = dict.fromkeys(NOMBRES_TARJETA, 0)
     tbk = dict.fromkeys(NOMBRES_TARJETA, 0)
 
@@ -474,29 +697,26 @@ def _resumen_general(diccionario, diccionario_2):
         if reg["Status"] == "encontrado" and reg["tarjeta"] in us:
             us[reg["tarjeta"]] += reg["Valor"]
 
-    for reg in diccionario_2.values():
-        if reg["Status"] != "encontrado":
-            continue
-        for codigo, nombre in CODIGO_A_NOMBRE.items():
-            if codigo in str(reg["tarjeta"]):
-                tbk[nombre] += reg["Valor"]
+    for item in informacion_proceso:
+        nombre = CODIGO_A_NOMBRE.get(item["tipo_tarjeta"])
+        if nombre and item["extra"] == "OK":
+            tbk[nombre] += item["valor_erp"]
 
     return _armar_tabla(us, tbk)
 
 
 def _resumen_dolar():
-    for item in informacion_proceso:
-        item["monto_transbank"] = _num(item["monto_transbank"])
-
-    us = dict.fromkeys(NOMBRES_TARJETA, 0)
+    """Ventas CM: lo que dice la cartola de cada tarjeta. Ventas TBK: lo que dice Transbank.
+    La diferencia es Transbank menos cartola, igual que en el Excel de cada venta."""
+    cartola = dict.fromkeys(NOMBRES_TARJETA, 0)
     tbk = dict.fromkeys(NOMBRES_TARJETA, 0)
     for item in informacion_proceso:
         nombre = CODIGO_A_NOMBRE.get(item["tipo_tarjeta"])
         if nombre and item["extra"] == "OK":
-            us[nombre] += _num(item["monto_original"])
-            tbk[nombre] += item["monto_transbank"]
+            cartola[nombre] += _num(item["monto_cartola"])
+            tbk[nombre] += _num(item["monto_original"])
 
-    return _armar_tabla(us, tbk, decimales=2)
+    return _armar_tabla(cartola, tbk, decimales=2)
 
 
 # ---------------------------------------------------------------------------
@@ -505,15 +725,17 @@ def _resumen_dolar():
 def _periodo(archivos, lector, identificar=identificar_local):
     """(desde, hasta) de la conciliación, o None si no hay fechas.
 
-    Sale de la fila «Periodo de: … hasta …» del ERP. Si el ERP no la trae, se usa la primera
-    y la última fecha de sus movimientos o, sin ERP, las fechas de venta de Transbank.
+    Sale de la fila «Periodo de: … hasta …» del ERP; con varios archivos, desde la fecha más antigua
+    hasta la más nueva. Si el ERP no la trae, se usa la primera y la última fecha de sus movimientos
+    o, sin ERP, las fechas de venta de Transbank.
     """
     fechas = []
     if archivos["archivo1"]:
-        periodo = logica_clp.periodo_del_encabezado(lector.hojas(archivos["archivo1"])[0][1])
-        if periodo:
-            return periodo
-        fechas = lector.leer(archivos["archivo1"], COLS_ERP)["Unnamed: 10"].map(logica_clp._fecha).dropna().tolist()
+        encabezados = [logica_clp.periodo_del_encabezado(lector.hojas(a)[0][1]) for a in logica_clp._lista(archivos["archivo1"])]
+        encabezados = [p for p in encabezados if p]
+        if encabezados:
+            return min(d for d, _ in encabezados), max(h for _, h in encabezados)
+        fechas = _erp(archivos, lector)["Unnamed: 10"].map(logica_clp._fecha).dropna().tolist()
     if not fechas and archivos["archivo7"]:
         fechas = leer_transbank(archivos["archivo7"], lector, identificar)[0]["Unnamed: 2"].map(logica_clp._fecha).dropna().tolist()
     return (min(fechas), max(fechas)) if fechas else None
@@ -615,11 +837,12 @@ def procesar(archivos, identificar=identificar_local):
             _conciliar_transbank_con_erp(archivos, lector, identificar)
 
         diccionario = _procesar_erp(archivos, lector) if archivos["archivo1"] else {}
-        diccionario_2 = _transbank_vs_erp(archivos, lector, identificar) if archivos["archivo7"] else {}
 
-        resultado["data"] = _resumen_general(diccionario, diccionario_2)
+        resultado["data"] = _resumen_general(diccionario)
         resultado["data_dolar"] = _resumen_dolar()
         resultado["resumen"] = _resumen_proceso(resultado["data_dolar"])
+        if archivos["archivo1"]:
+            _, resultado["resumen"]["erp_repetidos"], resultado["resumen"]["filas_erp_repetidas"] = lector._tablas["erp"]
         resultado["archivos_usados"] = [NOMBRES_ARCHIVO[c] for c, a in archivos.items() if a]
         resultado["periodo"] = _periodo(archivos, lector, identificar)
 
@@ -628,7 +851,7 @@ def procesar(archivos, identificar=identificar_local):
              "transacciones_ubicadas.xlsx", excel_ubicadas()),
             ("no_ubicadas", "No ubicadas en el ERP", "Transacciones de Transbank sin registro contable.",
              "transacciones_no_ubicadas.xlsx", excel_no_ubicadas()),
-            ("erp_sin_respaldo", "ERP sin respaldo en cartolas", "Documentos del ERP que no aparecen en Amex o Mastercard.",
+            ("erp_sin_respaldo", "ERP sin respaldo en cartolas", "Documentos del ERP que no aparecen en la cartola de su tarjeta.",
              "erp_sin_respaldo_en_cartolas.xlsx", excel_erp_sin_respaldo()),
         ]
         return resultado, reportes
@@ -638,8 +861,8 @@ def procesar(archivos, identificar=identificar_local):
 # Excel de descarga
 # ---------------------------------------------------------------------------
 COLUMNAS_PROCESO = [
-    "codigo_autorizacion", "documento", "monto_original", "monto_transbank", "diferencia",
-    "fecha_venta", "tipo_tarjeta", "status", "observacion", "extra",
+    "codigo_autorizacion", "documento", "monto_original", "monto_cartola", "diferencia",
+    "fecha_venta", "tipo_tarjeta", "status", "observacion", "nota", "extra",
 ]
 
 
@@ -677,7 +900,7 @@ def _df_proceso(extra):
 
 
 def excel_erp_sin_respaldo():
-    """Documentos del ERP que no se encontraron en las cartolas (Amex / Mastercard)."""
+    """Documentos del ERP que no se encontraron en la cartola de su tarjeta."""
     df = pd.DataFrame({"Documento": documento_inf, "Monto": monto_buscar_inf, "Fecha": fecha_inf, "TC": tc_inf})
     return _excel(df, "Reporte de Transacciones No Encontradas")
 
