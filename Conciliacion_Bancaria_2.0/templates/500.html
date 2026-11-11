@@ -1,0 +1,8 @@
+{% extends "errores/_base.html" %}
+{% block titulo %}Error del sistema{% endblock %}
+{% block codigo %}Error 500{% endblock %}
+{% block encabezado %}Ocurrió un error inesperado{% endblock %}
+{% block explicacion %}
+<p>El sistema no pudo completar lo que pediste. El error quedó registrado para revisarlo.</p>
+<p>Intenta de nuevo en unos minutos. Si vuelve a pasar, avisa al administrador indicando qué estabas haciendo y la hora.</p>
+{% endblock %}

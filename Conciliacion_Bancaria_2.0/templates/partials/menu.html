@@ -27,6 +27,10 @@
         {% if user.is_staff %}
         <div class="menu__grupo">
             <span class="menu__titulo">Administración</span>
+            <a class="menu__enlace{% if actual == 'conciliacion:configuracion' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:configuracion' %}"{% if actual == 'conciliacion:configuracion' %} aria-current="page"{% endif %}>
+                <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+                Configuración
+            </a>
             <a class="menu__enlace" href="{% url 'admin:index' %}">
                 <i data-lucide="settings" aria-hidden="true"></i>
                 Usuarios y permisos

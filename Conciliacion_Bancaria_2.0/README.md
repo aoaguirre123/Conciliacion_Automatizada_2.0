@@ -69,7 +69,7 @@ Para crear un usuario nuevo: `python manage.py createsuperuser`, o desde
 
 ## Cómo comprobar que estás viendo esta versión
 
-El pie de página dice **Conciliación bancaria v3.3.0**.
+El pie de página dice **Conciliación bancaria v3.4.2**.
 
 ## Al actualizar desde una versión anterior
 
@@ -97,7 +97,30 @@ Tus usuarios y el historial se mantienen.
   cada venta; un archivo cargado dos veces, o una venta que aparece en dos archivos, se
   cuenta una sola vez. El abono se busca en la cartola por medio de pago o como abono
   conjunto (por ejemplo, débito + prepago en un solo depósito).
+  Ventas en cuotas (columna «N° de cuota», por ejemplo 2/3): la venta se cruza una sola vez
+  con el BORDERO y sus otras cuotas toman ese resultado. La sección «Ventas en cuotas» lista
+  las cuotas que no vienen en los reportes cargados y el mes en que se esperaban (un mes
+  después de la anterior). Si ese mes está dentro de los reportes cargados, se avisa para
+  revisar y volver a conciliar con un reporte que abarque más meses; no suma al monto por
+  revisar.
+  Al soltar los archivos, cada reporte de Transbank muestra las fechas de venta que trae
+  (crédito y débito por separado) y el BORDERO su período. «Pagos del BORDERO sin abono»
+  (pantalla y Excel) lista solo los pagos de esas fechas: Visa, Mastercard, Amex y Diners
+  contra las fechas de crédito; Redcompra contra las de débito y prepago. Los de otras fechas
+  solo se cuentan, porque su abono viene en reportes de otros días. El cruce sigue usando
+  todo el BORDERO.
 - **Historial**: todas las conciliaciones guardadas, con su resultado y sus Excel.
+  Para borrar, se marcan las casillas de las conciliaciones (o «Borrar todas», que respeta el
+  filtro de moneda) y se confirma en una segunda pantalla que lista exactamente lo que se
+  borrará, marcando «Entiendo que no se puede deshacer». Después del borrado se verifica que
+  ya no estén y se informa cuáles se borraron.
+- **Configuración** (solo usuarios staff, en el menú «Administración»): tolerancia de montos
+  en pesos ($0 a $1.000; por defecto $10) y en dólares (US$ 0 a 5; por defecto US$ 0,10),
+  ventana de días entre la venta y el pago (0 a 15; por defecto 3) y palabras clave que
+  identifican en la glosa de la cartola un abono de Transbank (por defecto «transbank, tbk»).
+  La tolerancia solo se aplica cuando el código de autorización coincide; los cruces por
+  monto y fecha sin el código siguen exigiendo el mismo monto. Cada conciliación guarda los
+  criterios con que se hizo y los muestra en su detalle.
 
 En pesos, cada venta se identifica por el BIN de la tarjeta (6 primeros dígitos): marca,
 tipo, banco emisor y país. Los datos vienen de `apps/conciliacion/datos/bines.csv.gz`
@@ -105,6 +128,27 @@ tipo, banco emisor y país. Los datos vienen de `apps/conciliacion/datos/bines.c
 en la base con `python manage.py migrate`; la primera vez demora un poco más.
 Para actualizar la base: `python apps/conciliacion/datos/preparar_bines.py bin-list-data.csv`
 y una migración nueva que la vuelva a cargar.
+
+## Modo noche
+
+El interruptor «Modo noche» de la cabecera cambia los colores de toda la aplicación. La
+preferencia se guarda en el navegador; si nunca se ha elegido, se usa la del sistema operativo.
+Los colores están en `static/css/app.css`: el bloque `:root` (modo día) y
+`:root[data-tema="oscuro"]` (modo noche) definen las mismas variables.
+
+## Errores
+
+- Una conciliación o un reporte que no existe (por ejemplo, una dirección escrita a mano o una
+  conciliación ya borrada) lleva al historial o al detalle con un aviso, sin página de error.
+- Las acciones que solo funcionan con un botón (ejemplos, borrar historial, restablecer la
+  configuración, cerrar sesión) llevan a su página si se abren escribiendo la dirección.
+- Si la base de datos no permite guardar la conciliación, se muestra el aviso en la misma página.
+- Con la sesión terminada, el login avisa «Inicia sesión para continuar».
+- Para todo lo demás hay páginas de error propias: `templates/404.html`, `403.html`,
+  `403_csrf.html` (formulario vencido), `400.html` y `500.html`. Django las usa cuando
+  `DEBUG` está apagado, como en el servidor. Para verlas en el computador:
+  `set DJANGO_DEBUG=0` (en PowerShell: `$env:DJANGO_DEBUG="0"`) y
+  `python manage.py runserver --insecure`.
 
 ## Archivos que acepta
 
@@ -139,7 +183,9 @@ apps/usuarios/          login y cierre de sesión
 apps/conciliacion/
     logica.py           conciliación en dólares y sus Excel
     logica_clp.py       conciliación en pesos contra el BORDERO y sus Excel
-    models.py           historial (Conciliacion, Reporte) y BIN de tarjetas (BinTarjeta)
+    models.py           historial (Conciliacion, Reporte), BIN de tarjetas (BinTarjeta) y Configuracion
+    parametros.py       tolerancias, ventana de días y palabras clave (valores por defecto)
+    forms.py            formulario de la pantalla de configuración
     registro.py         guarda cada conciliación en el historial
     dolar.py            dólar observado (mindicador.cl)
     bines.py            identificación de tarjetas por BIN

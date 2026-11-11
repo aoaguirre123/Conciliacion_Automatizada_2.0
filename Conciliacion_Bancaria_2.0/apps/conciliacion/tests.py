@@ -18,6 +18,8 @@ from django.utils import translation
 from openpyxl import Workbook, load_workbook
 
 from . import lectura, logica, logica_clp
+from .models import Conciliacion, Configuracion
+from .parametros import Parametros
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +668,8 @@ class PantallasTests(TestCase):
         archivos = respuesta.json()["archivos"]
         self.assertEqual([a["tipo"] for a in archivos], ["cartola", "transbank", "bordero", None, None, None])
         self.assertIn("dólares", archivos[-1]["motivo"])
+        self.assertEqual(archivos[1]["detalle"], "ventas de Crédito: 07-09 · Débito y prepago: 07-09")
+        self.assertEqual(archivos[2]["detalle"], "del 07-09-2026 al 07-09-2026")
 
     def test_identifica_cada_archivo_soltado_en_dolares(self):
         self.client.force_login(self.usuario)
@@ -912,16 +916,435 @@ class AtajosTests(TestCase):
             respuesta = self.client.post("/conciliacion/pesos/ejemplo/")
         self.assertContains(respuesta, "No hay archivos de ejemplo en el servidor")
 
-    def test_borrar_historial_borra_pesos_y_dolares(self):
-        from .models import Conciliacion
-        Conciliacion.objects.create(moneda=Conciliacion.PESOS)
-        Conciliacion.objects.create(moneda=Conciliacion.PESOS)
-        Conciliacion.objects.create(moneda=Conciliacion.DOLARES)
-        self.assertContains(self.client.get("/conciliacion/historial/"), "Borrar historial (3)")
-        self.assertNotContains(self.client.get("/conciliacion/pesos/"), "Borrar historial")
-        respuesta = self.client.post("/conciliacion/historial/borrar/", follow=True)
-        self.assertContains(respuesta, "Se borraron 3 conciliaciones del historial.")
+    def test_borrar_historial_no_acepta_get(self):
+        self.assertRedirects(self.client.get("/conciliacion/historial/borrar/"), "/conciliacion/historial/")
+
+
+# ---------------------------------------------------------------------------
+# Configuración: tolerancias, ventana de días y palabras clave de la cartola
+# ---------------------------------------------------------------------------
+class ParametrosMotorTests(SimpleTestCase):
+    """Los motores usan los parámetros que reciben; sin parámetros, los valores de siempre."""
+
+    def _cruzar(self, monto_pago, dias_pago=0, **parametros):
+        p = Parametros(**parametros)
+        venta = {"codigo": "3538", "codigo_flex": "3538", "monto": 10000, "fecha": date(2026, 10, 29)}
+        pago = {"codigo": "3538", "codigo_flex": "3538", "documento": "3538", "monto": monto_pago,
+                "fecha": date(2026, 10, 29 - dias_pago), "cod": "RCO", "cuenta": "1"}
+        logica_clp._cruzar([venta], [pago], (date(2026, 10, 1), date(2026, 10, 31)), p.tolerancia_clp, p.ventana_dias)
+        return venta
+
+    def test_por_defecto_una_diferencia_de_300_pesos_es_diferencia(self):
+        self.assertEqual(self._cruzar(9700)["estado"], "diferencia")
+
+    def test_con_tolerancia_de_500_la_misma_venta_queda_conciliada(self):
+        venta = self._cruzar(9700, tolerancia_clp=500)
+        self.assertEqual(venta["estado"], "conciliado")
+        self.assertIn("Diferencia dentro de la tolerancia", venta["nota"])
+
+    def test_diferencia_chica_se_sigue_informando_como_redondeo(self):
+        self.assertIn("Diferencia de redondeo", self._cruzar(9992, tolerancia_clp=500)["nota"])
+
+    def test_la_tolerancia_no_une_ventas_de_otro_codigo(self):
+        # Mismo día, monto parecido pero otro código: con tolerancia amplia no debe darse por conciliada.
+        p = Parametros(tolerancia_clp=1000)
+        venta = {"codigo": "1111", "codigo_flex": "1111", "monto": 10000, "fecha": date(2026, 10, 29)}
+        pago = {"codigo": "9999", "codigo_flex": "9999", "documento": "9999", "monto": 9400,
+                "fecha": date(2026, 10, 29), "cod": "RCO", "cuenta": "1"}
+        logica_clp._cruzar([venta], [pago], (date(2026, 10, 1), date(2026, 10, 31)), p.tolerancia_clp, p.ventana_dias)
+        self.assertEqual(venta["estado"], "sin_registro")
+
+    def test_ventana_de_dias(self):
+        self.assertIn("otra fecha", self._cruzar(10000, dias_pago=5)["nota"])
+        self.assertEqual(self._cruzar(10000, dias_pago=5, ventana_dias=7)["nota"], "")
+
+    def test_palabras_clave_de_la_cartola(self):
+        self.assertEqual(len(logica_clp.leer_cartola(cartola_clp([1000]))), 1)
+        self.assertEqual(logica_clp.leer_cartola(cartola_clp([1000]), Parametros(palabras_cartola=("transbank",))), [])
+        self.assertEqual(len(logica_clp.leer_cartola(cartola_clp([1000]), Parametros(palabras_cartola=("abono comer",)))), 1)
+
+    def test_la_conciliacion_en_pesos_guarda_los_criterios_usados(self):
+        archivos = {"bordero": bordero_clp(PAGOS_MIXTOS), "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS)]}
+        resultado, _ = logica_clp.procesar(archivos, parametros=Parametros(tolerancia_clp=700))
+        self.assertEqual(resultado["parametros"]["tolerancia_clp"], 700)
+
+    def test_tolerancia_en_dolares(self):
+        self.assertFalse(logica._es_redondeo(0.5))
+        self.assertTrue(logica._es_redondeo(0.5, 1.0))
+        resultado, _ = logica.procesar(archivos_usd(), parametros=Parametros(tolerancia_usd=1.5))
+        self.assertEqual(resultado["resumen"]["tolerancia_redondeo"], 1.5)
+        self.assertEqual(resultado["parametros"]["tolerancia_usd"], 1.5)
+
+
+class ConfiguracionTests(TestCase):
+    URL = "/conciliacion/configuracion/"
+
+    def setUp(self):
+        self.admin = User.objects.create_user("jefe", "jefe@hotel.cl", "Clave-Prueba-2026", is_staff=True)
+        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026")
+
+    def datos(self, **cambios):
+        datos = {"tolerancia_clp": "500", "tolerancia_usd": "0.50", "ventana_dias": "3", "palabras_cartola": "Transbank, TBK"}
+        datos.update(cambios)
+        return datos
+
+    def test_sin_configuracion_guardada_se_usan_los_valores_por_defecto(self):
+        self.assertEqual(Configuracion.actual().parametros(), Parametros())
+        self.assertFalse(Configuracion.objects.exists())
+
+    def test_solo_un_administrador_puede_entrar(self):
+        self.client.force_login(self.usuario)
+        self.assertRedirects(self.client.get(self.URL), "/", fetch_redirect_response=False)
+        self.assertRedirects(self.client.post(self.URL, self.datos()), "/", fetch_redirect_response=False)
+        self.assertContains(self.client.get("/"), "solo la pueden ver y cambiar los administradores")
+        self.assertFalse(Configuracion.objects.exists())
+        self.assertNotContains(self.client.get("/conciliacion/pesos/"), self.URL)
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(self.URL), "Tolerancia en pesos")
+        self.assertContains(self.client.get("/conciliacion/pesos/"), self.URL)
+
+    def test_guardar_cambios(self):
+        self.client.force_login(self.admin)
+        respuesta = self.client.post(self.URL, self.datos(), follow=True)
+        self.assertRedirects(respuesta, self.URL)
+        self.assertContains(respuesta, "Configuración guardada")
+        parametros = Configuracion.actual().parametros()
+        self.assertEqual((parametros.tolerancia_clp, parametros.tolerancia_usd), (500, 0.5))
+        self.assertEqual(parametros.palabras_cartola, ("transbank", "tbk"))
+        self.assertEqual(Configuracion.objects.get().actualizada_por, self.admin)
+        self.assertContains(self.client.get("/conciliacion/pesos/"), "Tolerancia: $ 500")
+
+    def test_valores_fuera_de_rango_no_se_guardan(self):
+        self.client.force_login(self.admin)
+        self.client.post(self.URL, self.datos())
+        for cambio, mensaje in [
+            ({"tolerancia_clp": "-1"}, "no puede ser negativa"),
+            ({"tolerancia_clp": "2000"}, "no puede superar $1.000"),
+            ({"tolerancia_usd": "9"}, "no puede superar US$ 5"),
+            ({"ventana_dias": "40"}, "no puede superar 15 días"),
+            ({"palabras_cartola": " , "}, "al menos una palabra clave"),
+            ({"palabras_cartola": "transbank, tb"}, "al menos 3 letras"),
+        ]:
+            respuesta = self.client.post(self.URL, self.datos(**cambio))
+            self.assertEqual(respuesta.status_code, 200)
+            self.assertContains(respuesta, mensaje)
+            self.assertContains(respuesta, "No se guardaron los cambios")
+        self.assertEqual(Configuracion.actual().parametros().tolerancia_clp, 500)
+
+    def test_la_conciliacion_usa_la_configuracion_y_la_muestra_en_el_detalle(self):
+        self.client.force_login(self.admin)
+        self.client.post(self.URL, self.datos(tolerancia_clp="800"))
+        respuesta = self.client.post("/conciliacion/pesos/", {
+            "bordero": bordero_clp(PAGOS_MIXTOS), "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS)],
+        })
+        self.assertEqual(respuesta.status_code, 302)
+        self.assertEqual(Conciliacion.objects.get().resultado["parametros"]["tolerancia_clp"], 800)
+        self.assertContains(self.client.get(respuesta["Location"]), "Criterios usados: tolerancia de $ 800")
+
+    def test_restablecer_valores_por_defecto(self):
+        self.client.force_login(self.admin)
+        self.assertNotContains(self.client.get(self.URL), "Restablecer valores por defecto")
+        self.client.post(self.URL, self.datos(tolerancia_clp="900", ventana_dias="7", palabras_cartola="abono comer"))
+        pagina = self.client.get(self.URL)
+        self.assertContains(pagina, "Restablecer valores por defecto")
+        self.assertContains(pagina, "De $0 a $1.000; por defecto $10.")
+        respuesta = self.client.post("/conciliacion/configuracion/restablecer/", follow=True)
+        self.assertContains(respuesta, "Se restablecieron los valores por defecto.")
+        self.assertContains(respuesta, "Se están usando los valores por defecto.")
+        self.assertNotContains(respuesta, "Restablecer valores por defecto")
+        self.assertEqual(Configuracion.actual().parametros(), Parametros())
+        self.assertEqual(Configuracion.objects.get().actualizada_por, self.admin)
+
+    def test_restablecer_solo_administradores_y_por_post(self):
+        self.client.force_login(self.usuario)
+        self.assertRedirects(self.client.post("/conciliacion/configuracion/restablecer/"), "/")
+        self.client.force_login(self.admin)
+        self.assertRedirects(self.client.get("/conciliacion/configuracion/restablecer/"), self.URL)
+
+
+# ---------------------------------------------------------------------------
+# Ventas en cuotas
+# ---------------------------------------------------------------------------
+def tbk_cuotas(nombre, dia_abono, filas):
+    """Reporte «Abonos por día» de un día, con ventas en cuotas.
+
+    filas: [(fecha de venta, cuota «k/N» o «S/C», monto original, monto de la cuota, código, número único)]
+    """
+    def f(**valores):
+        return fila(32, **valores)
+    return xlsx(nombre, {"Hoja1": [
+        f(c1="Reporte:", c2="Abonos por día", c8="Periodo de consulta:", c9=dia_abono, c10="Día desde:",
+          c11=" ".join(dia_abono.split()[:2]), c12="Día hasta:", c13=" ".join(dia_abono.split()[:2])),
+        f(c1="Empresa:", c7="Moneda:", c9="Medio de pago:"),
+        f(c1="HOTEL", c7="Pesos", c9="Todos los medios de pago"),
+        f(c1="Total abono", c3=sum(x[3] for x in filas)),
+        f(c1="Fecha de venta", c5="Medio de pago", c6="Ventas", c24="Identificador", c30="ID transacción (TID)"),
+        f(c6="Monto original de venta (+)", c8="Tipo de venta/cuota", c9="N° de cuota",
+          c10="Monto venta válido para abono (+)", c11="Comisión Transbank (-)", c13="Total abono (=)",
+          c24="N° de tarjeta", c25="Código de autorización de venta", c28="Número único"),
+    ] + [f(c1=venta, c2="Venta", c5="Crédito", c6=original, c8="C3C" if "/" in cuota else "Venta $", c9=cuota,
+           c10=valor, c11=0, c13=valor, c24="4513 68** **** 6158", c25=codigo, c28=unico, c30="1")
+         for venta, cuota, original, valor, codigo, unico in filas]})
+
+
+class CuotasTests(SimpleTestCase):
+    VENTA = "07 septiembre 2026"
+
+    def procesar(self, *reportes):
+        archivos = {"bordero": bordero_clp([("V$", 90000, "777")]), "transbank": list(reportes)}
+        return logica_clp.procesar(archivos)[0]
+
+    def cuota(self, k, dia, unico):
+        return tbk_cuotas(f"tbk_{k}.xlsx", dia, [(self.VENTA, f"{k}/3", 90000, 30000, "000777", unico)])
+
+    def test_las_otras_cuotas_no_quedan_sin_registro(self):
+        r = self.procesar(self.cuota(1, "08 septiembre 2026", "1"), self.cuota(2, "08 octubre 2026", "2"),
+                          self.cuota(3, "07 noviembre 2026", "3"))
+        resumen = r["resumen"]
+        self.assertEqual((resumen["conciliadas"], resumen["sin_registro"], resumen["otras_cuotas"]), (1, 0, 2))
+        self.assertEqual(resumen["por_revisar"], 0)
+        venta = r["cuotas"]["ventas"][0]
+        self.assertEqual((venta["encontradas"], venta["faltantes"]), ("1/3, 2/3, 3/3", []))
+
+    def test_cuota_desfasada_queda_como_no_encontrada_dentro_del_periodo(self):
+        # Dos cuotas en meses seguidos y la tercera llega dos meses después (en diciembre, no cargado).
+        r = self.procesar(self.cuota(1, "08 septiembre 2026", "1"), self.cuota(2, "08 octubre 2026", "2"),
+                          tbk_cuotas("noviembre.xlsx", "09 noviembre 2026", [("05 noviembre 2026", "S/C", 5000, 5000, "000888", "9")]))
+        cuotas = r["cuotas"]
+        self.assertEqual(cuotas["faltantes_en_periodo"], 1)
+        self.assertEqual(cuotas["ventas"][0]["faltantes"], [{"cuota": "3/3", "mes": "Noviembre 2026", "en_periodo": True}])
+        self.assertEqual(r["resumen"]["cuotas_faltantes"], 1)
+        self.assertEqual(r["resumen"]["por_revisar"], 0)  # la cuota faltante es un aviso: no suma
+
+        # Al agregar el reporte de diciembre, la cuota aparece y ya no falta nada.
+        r = self.procesar(self.cuota(1, "08 septiembre 2026", "1"), self.cuota(2, "08 octubre 2026", "2"),
+                          self.cuota(3, "08 diciembre 2026", "3"))
+        self.assertEqual(r["cuotas"]["faltantes"], 0)
+
+    def test_cuotas_de_meses_no_cargados_son_solo_informativas(self):
+        r = self.procesar(self.cuota(1, "08 septiembre 2026", "1"))
+        cuotas = r["cuotas"]
+        self.assertEqual((cuotas["faltantes"], cuotas["faltantes_en_periodo"]), (2, 0))
+        self.assertEqual([f["mes"] for f in cuotas["ventas"][0]["faltantes"]], ["Octubre 2026", "Noviembre 2026"])
+
+    def test_cuota_de_una_venta_anterior_al_bordero(self):
+        r = self.procesar(tbk_cuotas("oct.xlsx", "22 octubre 2026",
+                                     [("20 agosto 2026", "3/3", 428006, 142670, "468617", "5")]))
+        observacion = r["cuotas"]["ventas"][0]
+        self.assertEqual(observacion["estado_venta"], "Fuera del período del BORDERO")
+        self.assertEqual(observacion["faltantes_texto"], "1/3 (Agosto 2026), 2/3 (Septiembre 2026)")
+
+    def test_se_ve_en_el_detalle_y_en_el_excel(self):
+        r, reportes = logica_clp.procesar({"bordero": bordero_clp([("V$", 90000, "777")]), "transbank": [
+            self.cuota(1, "08 septiembre 2026", "1"), self.cuota(2, "08 octubre 2026", "2"),
+            tbk_cuotas("nov.xlsx", "09 noviembre 2026", [("05 noviembre 2026", "S/C", 5000, 5000, "000888", "9")])]})
+        html = Template('{% include "conciliacion/_resultado_clp.html" %}').render(Context(r))
+        self.assertIn("1 cuota no encontrada: revisar", html)
+        self.assertIn("Esperada en noviembre 2026", html)
+        completa = load_workbook(io.BytesIO(reportes[0][4]))
+        self.assertIn("Cuotas", completa.sheetnames)
+
+
+# ---------------------------------------------------------------------------
+# Pagos del BORDERO sin abono: solo las fechas que traen los reportes de Transbank
+# ---------------------------------------------------------------------------
+def bordero_dias(pagos):
+    """pagos: [(código tarjeta, monto, documento, día de septiembre)] -> BORDERO del 01 al 10-09-2026."""
+    encabezado = ["Hab", "Tipo Hab", "Reserva", "Cuenta", "Cod. Deb.", "Descripción", None, "Factura",
+                  "Valor", "Documento", "Fecha", "Hora", "Usuario", "Designación"]
+    periodo = [None, None, None, None, None, "Periodo de:", None, "01/09/2026", None, "hasta", "10/09/2026"]
+    filas = [[None, None, None, i, cod, "Pago", i, None, -monto, doc, f"{dia:02d}/09/2026"]
+             for i, (cod, monto, doc, dia) in enumerate(pagos, 1)]
+    return xlsx("bordero.xlsx", {"Hoja1": [periodo, encabezado] + filas})
+
+
+class BorderoSinAbonoTests(SimpleTestCase):
+    def procesar(self):
+        bordero = bordero_dias([
+            ("V$", 10000, "111", 3),    # crédito del 03: viene en el reporte
+            ("MC$", 20000, "222", 3),   # crédito del 03 sin abono: se lista
+            ("MC$", 25000, "333", 5),   # crédito del 05: el reporte no trae crédito de ese día
+            ("RCO", 5000, "444", 5),    # débito del 05: viene en el reporte
+            ("RCO", 6000, "555", 5),    # débito del 05 sin abono: se lista
+            ("RCO", 7000, "666", 9),    # débito de otro día: se omite
+        ])
+        reporte = tbk_cuotas("abonos.xlsx", "08 septiembre 2026", [
+            ("03 septiembre 2026", "S/C", 10000, 10000, "000111", "1"),
+        ])
+        # El ayudante solo genera ventas a crédito: se agrega una de débito del 05.
+        libro = load_workbook(reporte)
+        hoja = libro.active
+        hoja.append(fila(32, c1="05 septiembre 2026", c2="Venta", c5="Débito", c6=5000, c8="Normal", c9="S/C",
+                         c10=5000, c11=0, c13=5000, c24="4513 68** **** 6158", c25="000444", c28="2", c30="1"))
+        salida = io.BytesIO()
+        libro.save(salida)
+        archivo = SimpleUploadedFile("abonos.xlsx", salida.getvalue())
+        return logica_clp.procesar({"bordero": [bordero], "transbank": [archivo]})
+
+    def test_lista_solo_las_fechas_de_cada_tipo_de_pago(self):
+        resultado, reportes = self.procesar()
+        resumen = resultado["resumen"]
+        self.assertEqual(resumen["conciliadas"], 2)
+        self.assertEqual(resumen["bordero_pendiente"], 2)
+        self.assertEqual(resumen["bordero_sin_cobertura"], 2)
+        self.assertEqual(resumen["cobertura"], "Crédito: 03-09 · Débito y prepago: 05-09")
+        hoja = load_workbook(io.BytesIO(reportes[2][4])).active
+        documentos = [hoja.cell(row=r, column=4).value for r in range(5, hoja.max_row + 1)]
+        self.assertEqual(sorted(documentos), ["222", "555"])
+        self.assertIn("Se omitieron 2 pagos de otras fechas", hoja["A2"].value)
+
+    def test_aviso_en_pantalla(self):
+        resultado, _ = self.procesar()
+        html = Template('{% include "conciliacion/_resultado_clp.html" %}').render(Context(resultado))
+        self.assertIn("2 pagos del BORDERO de fechas que no traen los reportes de Transbank", html)
+
+    def test_prelectura_de_fechas_al_soltar(self):
+        reporte = tbk_cuotas("abonos.xlsx", "08 septiembre 2026", [
+            ("03 septiembre 2026", "S/C", 10000, 10000, "000111", "1"),
+            ("04 septiembre 2026", "S/C", 20000, 20000, "000222", "2"),
+            ("20 agosto 2026", "3/3", 90000, 30000, "000333", "3"),  # cuota antigua: no cuenta
+        ])
+        self.assertEqual(logica_clp.describir(reporte, "transbank"), "ventas de Crédito: 03-09 al 04-09")
+        self.assertEqual(logica_clp.describir(bordero_dias([("V$", 1, "1", 3)]), "bordero"), "del 01-09-2026 al 10-09-2026")
+
+
+# ---------------------------------------------------------------------------
+# Errores: direcciones que no existen, acciones abiertas en el navegador, sesión, base de datos
+# ---------------------------------------------------------------------------
+class ErroresTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026")
+        self.client.force_login(self.usuario)
+
+    def conciliar(self):
+        return self.client.post("/conciliacion/pesos/", {
+            "bordero": bordero_clp(PAGOS_MIXTOS), "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS)],
+        })
+
+    def test_conciliacion_que_no_existe(self):
+        respuesta = self.client.get("/conciliacion/historial/999/", follow=True)
+        self.assertRedirects(respuesta, "/conciliacion/historial/")
+        self.assertContains(respuesta, "La conciliación N° 999 no existe o fue borrada del historial.")
+
+    def test_descarga_que_no_existe(self):
+        detalle = self.conciliar()["Location"]
+        pk = Conciliacion.objects.get().pk
+        respuesta = self.client.get(f"/conciliacion/historial/{pk}/descargar/otra-cosa/", follow=True)
+        self.assertRedirects(respuesta, detalle)
+        self.assertContains(respuesta, "Ese reporte no existe para esta conciliación")
+        respuesta = self.client.get("/conciliacion/historial/999/descargar/completa/", follow=True)
+        self.assertRedirects(respuesta, "/conciliacion/historial/")
+
+    def test_acciones_abiertas_en_el_navegador_vuelven_a_su_pagina(self):
+        for url, destino in [
+            ("/conciliacion/pesos/ejemplo/", "/conciliacion/pesos/"),
+            ("/conciliacion/pesos/identificar/", "/conciliacion/pesos/"),
+            ("/conciliacion/ejemplo/", "/conciliacion/"),
+            ("/conciliacion/identificar/", "/conciliacion/"),
+            ("/conciliacion/historial/borrar/", "/conciliacion/historial/"),
+        ]:
+            self.assertRedirects(self.client.get(url), destino, fetch_redirect_response=False)
+        self.assertRedirects(self.client.get("/usuarios/logout/"), "/")
+        self.assertEqual(self.client.get("/").status_code, 200)  # sigue con la sesión iniciada
+
+    def test_sesion_terminada_avisa_en_el_login(self):
+        self.client.logout()
+        respuesta = self.client.get("/conciliacion/pesos/", follow=True)
+        self.assertContains(respuesta, "Inicia sesión para continuar")
+
+    def test_falla_al_guardar_en_la_base(self):
+        from django.db import OperationalError
+        with mock.patch("apps.conciliacion.registro.guardar", side_effect=OperationalError("database is locked")):
+            respuesta = self.conciliar()
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, "no se pudo guardar la conciliación en el historial")
         self.assertFalse(Conciliacion.objects.exists())
 
-    def test_borrar_historial_no_acepta_get(self):
-        self.assertEqual(self.client.get("/conciliacion/historial/borrar/").status_code, 405)
+    def test_prelectura_de_un_archivo_danado_no_falla(self):
+        self.assertEqual(logica_clp.describir(texto("roto.xls", "\x00\x01 basura"), "transbank"), "")
+
+
+@override_settings(DEBUG=False)
+class PaginasDeErrorTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026")
+
+    def test_404(self):
+        self.client.force_login(self.usuario)
+        respuesta = self.client.get("/no-existe/")
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertContains(respuesta, "No encontramos esta página", status_code=404)
+        self.assertContains(respuesta, "Ir al inicio", status_code=404)
+
+    def test_500(self):
+        self.client.force_login(self.usuario)
+        self.client.raise_request_exception = False
+        with mock.patch("apps.conciliacion.views.Paginator", side_effect=RuntimeError("falla")):
+            respuesta = self.client.get("/conciliacion/historial/")
+        self.assertEqual(respuesta.status_code, 500)
+        self.assertContains(respuesta, "Ocurrió un error inesperado", status_code=500)
+
+    def test_formulario_vencido(self):
+        cliente = self.client_class(enforce_csrf_checks=True)
+        respuesta = cliente.post("/usuarios/login/", {"email": "prueba@hotel.cl", "password": "x"})
+        self.assertEqual(respuesta.status_code, 403)
+        self.assertContains(respuesta, "No se pudo enviar el formulario", status_code=403)
+
+
+class BorrarHistorialTests(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026")
+        self.client.force_login(self.usuario)
+        self.pesos = [Conciliacion.objects.create(moneda=Conciliacion.PESOS) for _ in range(3)]
+        self.dolares = Conciliacion.objects.create(moneda=Conciliacion.DOLARES)
+
+    def test_historial_muestra_casillas_y_botones(self):
+        pagina = self.client.get("/conciliacion/historial/")
+        self.assertContains(pagina, 'name="ids"', count=4)
+        self.assertContains(pagina, "Borrar seleccionadas")
+        self.assertContains(pagina, "Borrar todas (4)")
+        self.assertContains(self.client.get("/conciliacion/historial/?moneda=CLP"), "Borrar todas las de pesos (3)")
+
+    def test_primer_paso_muestra_lo_seleccionado_sin_borrar(self):
+        a, b = self.pesos[0].pk, self.dolares.pk
+        respuesta = self.client.post("/conciliacion/historial/borrar/", {"ids": [a, b]})
+        self.assertContains(respuesta, "Se borrarán 2 conciliaciones")
+        self.assertContains(respuesta, f'value="{b},{a}"')
+        self.assertEqual(Conciliacion.objects.count(), 4)
+
+    def test_sin_seleccion_no_avanza(self):
+        respuesta = self.client.post("/conciliacion/historial/borrar/", {}, follow=True)
+        self.assertContains(respuesta, "Selecciona al menos una conciliación para borrar.")
+
+    def test_sin_marcar_entiendo_no_borra(self):
+        respuesta = self.client.post("/conciliacion/historial/borrar/confirmar/", {"ids": str(self.pesos[0].pk)}, follow=True)
+        self.assertContains(respuesta, "No se borró nada")
+        self.assertEqual(Conciliacion.objects.count(), 4)
+
+    def test_borra_solo_las_confirmadas_y_lo_verifica(self):
+        a, b = self.pesos[0].pk, self.pesos[1].pk
+        respuesta = self.client.post("/conciliacion/historial/borrar/confirmar/",
+                                     {"ids": f"{a},{b},999", "entiendo": "1"}, follow=True)
+        self.assertContains(respuesta, f"Se borraron 2 conciliaciones del historial (N° {a}, N° {b}). Se verificó que ya no están.")
+        self.assertContains(respuesta, "Ya no estaban en el historial: N° 999.")
+        self.assertEqual(set(Conciliacion.objects.values_list("pk", flat=True)), {self.pesos[2].pk, self.dolares.pk})
+
+    def test_borrar_todas_respeta_el_filtro_de_moneda(self):
+        respuesta = self.client.post("/conciliacion/historial/borrar/", {"todas": "1", "moneda": "CLP"})
+        self.assertContains(respuesta, "todas las de pesos")
+        ids = respuesta.context["ids"]
+        respuesta = self.client.post("/conciliacion/historial/borrar/confirmar/",
+                                     {"ids": ids, "entiendo": "1", "moneda": "CLP"})
+        self.assertRedirects(respuesta, "/conciliacion/historial/?moneda=CLP", fetch_redirect_response=False)
+        self.assertEqual(list(Conciliacion.objects.values_list("moneda", flat=True)), [Conciliacion.DOLARES])
+
+    def test_una_conciliacion_nueva_no_se_borra_aunque_se_haya_elegido_borrar_todas(self):
+        ids = self.client.post("/conciliacion/historial/borrar/", {"todas": "1"}).context["ids"]
+        nueva = Conciliacion.objects.create(moneda=Conciliacion.PESOS)
+        self.client.post("/conciliacion/historial/borrar/confirmar/", {"ids": ids, "entiendo": "1"})
+        self.assertEqual(list(Conciliacion.objects.values_list("pk", flat=True)), [nueva.pk])
+
+    def test_abrir_las_direcciones_en_el_navegador_vuelve_al_historial(self):
+        for url in ("/conciliacion/historial/borrar/", "/conciliacion/historial/borrar/confirmar/"):
+            self.assertRedirects(self.client.get(url), "/conciliacion/historial/")
+        self.assertEqual(Conciliacion.objects.count(), 4)

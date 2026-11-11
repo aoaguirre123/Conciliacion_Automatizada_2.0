@@ -33,6 +33,7 @@ from openpyxl.styles import Font
 
 from . import lectura, logica_clp
 from .bines import identificar_local
+from .parametros import Parametros
 
 ArchivoNoValido = logica_clp.ArchivoInvalido
 
@@ -51,7 +52,7 @@ COLS_TBK = list(range(1, 11))
 COLS_BANCO = list(range(1, 9))
 COLS_TARJETA = list(range(1, 15))
 TOLERANCIA_USD = 0.005  # para comparar montos con decimales leídos de formatos distintos
-TOLERANCIA_REDONDEO_USD = 0.10  # dólares: hasta aquí, una diferencia entre Transbank y la cartola es redondeo
+TOLERANCIA_REDONDEO_USD = Parametros().tolerancia_usd  # por defecto; se cambia en «Configuración»
 COLS_MONTOS = ("Unnamed: 12", "Unnamed: 13", "Unnamed: 14")  # otra moneda, saldo, saldo corregido
 
 NOMBRES_TARJETA = ["Amex US$", "Dinners US$", "Master Card US$", "Visa US$"]
@@ -439,7 +440,7 @@ def _ventas_transbank(archivos, lector, identificar):
     return ventas
 
 
-def _cruzar_con_erp(ventas, pagos, en_cartola):
+def _cruzar_con_erp(ventas, pagos, en_cartola, tolerancia=TOLERANCIA_REDONDEO_USD, ventana=logica_clp.VENTANA_DIAS):
     """Vincula cada venta con su pago del ERP y llena su registro (ver las pasadas al inicio del módulo).
 
     `en_cartola(pago, monto)` entrega lo que dice la cartola de la tarjeta sobre ese pago.
@@ -463,10 +464,15 @@ def _cruzar_con_erp(ventas, pagos, en_cartola):
 
     def cerca(v, idx):
         monto = dolares(v, idx)
-        return monto is not None and _es_redondeo(v["monto"] - monto)
+        return monto is not None and _es_redondeo(v["monto"] - monto, tolerancia)
+
+    def igual(v, idx):
+        """Para los cruces sin el código en fecha: la tolerancia configurada no se amplía más allá del redondeo."""
+        monto = dolares(v, idx)
+        return monto is not None and _es_redondeo(v["monto"] - monto, min(tolerancia, TOLERANCIA_REDONDEO_USD))
 
     def en_fecha(v, idx):
-        return dias(v, idx) <= logica_clp.VENTANA_DIAS
+        return dias(v, idx) <= ventana
 
     def libres(v, indices):
         """Pagos sin usar de la tarjeta de la venta (de cualquiera, si la venta no tiene marca)."""
@@ -482,7 +488,7 @@ def _cruzar_con_erp(ventas, pagos, en_cartola):
         """Varios documentos con el mismo código y fecha cercana que juntos suman el monto de la venta."""
         opciones = [i for i in libres(v, por_codigo.get(v["codigo"], [])) if en_fecha(v, i)]
         montos = [dolares(v, i) for i in opciones]
-        if len(opciones) > 1 and None not in montos and _es_redondeo(v["monto"] - sum(montos)):
+        if len(opciones) > 1 and None not in montos and _es_redondeo(v["monto"] - sum(montos), tolerancia):
             return opciones
         return None
 
@@ -495,8 +501,8 @@ def _cruzar_con_erp(ventas, pagos, en_cartola):
         (lambda v: elegir(v, con_flex(v), lambda v, i: en_fecha(v, i) and cerca(v, i)), codigo_digitado),
         (lambda v: elegir(v, con_codigo(v), en_fecha), ""),
         (lambda v: elegir(v, con_flex(v), en_fecha), codigo_digitado),
-        (lambda v: elegir(v, por_fecha.get(v["fecha"], []) if v["fecha"] else [], cerca), "Cruzado por monto y fecha: revisar código"),
-        (lambda v: elegir(v, con_flex(v), cerca), "Mismo código y monto en otra fecha: revisar"),
+        (lambda v: elegir(v, por_fecha.get(v["fecha"], []) if v["fecha"] else [], igual), "Cruzado por monto y fecha: revisar código"),
+        (lambda v: elegir(v, con_flex(v), igual), "Mismo código y monto en otra fecha: revisar"),
     ]
 
     pendientes = list(ventas)
@@ -508,16 +514,17 @@ def _cruzar_con_erp(ventas, pagos, en_cartola):
                 siguientes.append(v)
             else:
                 usados.update(indices)
-                _llenar_ubicada(v, [pagos[i] for i in indices], [dolares(v, i) for i in indices], en_cartola, nota)
+                _llenar_ubicada(v, [pagos[i] for i in indices], [dolares(v, i) for i in indices], en_cartola, nota,
+                                tolerancia)
         pendientes = siguientes
     return pendientes, por_codigo
 
 
-def _es_redondeo(diferencia):
-    return round(abs(diferencia), 2) <= TOLERANCIA_REDONDEO_USD
+def _es_redondeo(diferencia, tolerancia=TOLERANCIA_REDONDEO_USD):
+    return round(abs(diferencia), 2) <= tolerancia
 
 
-def _llenar_ubicada(venta, pagos, montos, en_cartola, nota):
+def _llenar_ubicada(venta, pagos, montos, en_cartola, nota, tolerancia=TOLERANCIA_REDONDEO_USD):
     reg = venta["reg"]
     reg.update(en_cartola(pagos[0], venta["monto"]))
     reg["documento"] = pagos[0]["cuenta"] if len(pagos) == 1 else " + ".join(str(p["cuenta"]) for p in pagos)
@@ -537,7 +544,7 @@ def _llenar_ubicada(venta, pagos, montos, en_cartola, nota):
         monto_cartola = round(sum(m for m in montos if m is not None), 2)
         diferencia = round(venta["monto"] - monto_cartola, 2)
         reg.update(monto_cartola=monto_cartola, diferencia=diferencia)
-        if not _es_redondeo(diferencia):
+        if not _es_redondeo(diferencia, tolerancia):
             reg["estado"] = "diferencia"
             notas.append("Diferencia de monto")
         elif diferencia:
@@ -568,7 +575,8 @@ def _llenar_sin_registro(venta, pagos, por_codigo, periodo):
     reg["nota"] = "; ".join(notas)
 
 
-def _conciliar_transbank_con_erp(archivos, lector, identificar=identificar_local):
+def _conciliar_transbank_con_erp(archivos, lector, identificar=identificar_local, parametros=None):
+    parametros = parametros or Parametros()
     ventas = _ventas_transbank(archivos, lector, identificar)
     pagos = _pagos_erp(archivos, lector)
     cartolas = {
@@ -582,7 +590,8 @@ def _conciliar_transbank_con_erp(archivos, lector, identificar=identificar_local
             return {"status": f"NO SE CARGO EL ARCHIVO DE {nombre}"}
         return _comparar_con_tarjeta(cartolas[pago["tarjeta"]], pago["cuenta"], _entero(pago["valor"]), monto, nombre)
 
-    pendientes, por_codigo = _cruzar_con_erp(ventas, pagos, en_cartola)
+    pendientes, por_codigo = _cruzar_con_erp(ventas, pagos, en_cartola, parametros.tolerancia_usd,
+                                             parametros.ventana_dias)
     periodo = _periodo(archivos, lector, identificar)
     for venta in pendientes:
         _llenar_sin_registro(venta, pagos, por_codigo, periodo)
@@ -665,7 +674,7 @@ def _armar_tabla(valores_us, valores_tbk, decimales=None):
     return filas
 
 
-def _resumen_proceso(tabla_dolar):
+def _resumen_proceso(tabla_dolar, tolerancia=TOLERANCIA_REDONDEO_USD):
     """Indicadores que se muestran arriba de los resultados."""
     diferencia = float(tabla_dolar[-1]["diferencia"]) if tabla_dolar else 0.0
     no_ubicadas = {tuple(r.values()) for r in informacion_proceso if r["extra"] == "NO"}
@@ -685,7 +694,7 @@ def _resumen_proceso(tabla_dolar):
         "fuera_periodo": cuenta("fuera_periodo"),
         "sin_marca": sum(1 for r in informacion_proceso if r["sin_marca"]),
         "con_nota": sum(1 for r in informacion_proceso if r["extra"] == "OK" and "revisar" in r["nota"]),
-        "tolerancia_redondeo": TOLERANCIA_REDONDEO_USD,
+        "tolerancia_redondeo": tolerancia,
     }
 
 
@@ -823,8 +832,12 @@ def validar_archivos(archivos):
 _candado = threading.Lock()
 
 
-def procesar(archivos, identificar=identificar_local):
-    """Ejecuta el análisis completo. Devuelve (resultado para la pantalla, reportes Excel)."""
+def procesar(archivos, identificar=identificar_local, parametros=None):
+    """Ejecuta el análisis completo. Devuelve (resultado para la pantalla, reportes Excel).
+
+    `parametros`: tolerancia de redondeo en dólares y ventana de días (ver parametros.py).
+    """
+    parametros = parametros or Parametros()
     with _candado:
         _limpiar_resultados()
         lector = LectorExcel()
@@ -834,13 +847,14 @@ def procesar(archivos, identificar=identificar_local):
             resultado.update(_buscar_abono_en_banco(archivos["archivo6"], archivos["archivo7"], lector, identificar))
 
         if archivos["archivo7"]:
-            _conciliar_transbank_con_erp(archivos, lector, identificar)
+            _conciliar_transbank_con_erp(archivos, lector, identificar, parametros)
 
         diccionario = _procesar_erp(archivos, lector) if archivos["archivo1"] else {}
 
         resultado["data"] = _resumen_general(diccionario)
         resultado["data_dolar"] = _resumen_dolar()
-        resultado["resumen"] = _resumen_proceso(resultado["data_dolar"])
+        resultado["resumen"] = _resumen_proceso(resultado["data_dolar"], parametros.tolerancia_usd)
+        resultado["parametros"] = parametros.como_dict()
         if archivos["archivo1"]:
             _, resultado["resumen"]["erp_repetidos"], resultado["resumen"]["filas_erp_repetidas"] = lector._tablas["erp"]
         resultado["archivos_usados"] = [NOMBRES_ARCHIVO[c] for c, a in archivos.items() if a]

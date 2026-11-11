@@ -7,6 +7,22 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     iconos();
 
+    // Modo noche: el interruptor de la cabecera guarda la preferencia en este navegador.
+    var interruptor = document.querySelector('[data-tema-interruptor]');
+    if (interruptor) {
+        var raiz = document.documentElement;
+        var marcar = function () {
+            interruptor.setAttribute('aria-checked', raiz.getAttribute('data-tema') === 'oscuro' ? 'true' : 'false');
+        };
+        marcar();
+        interruptor.addEventListener('click', function () {
+            var oscuro = raiz.getAttribute('data-tema') !== 'oscuro';
+            if (oscuro) raiz.setAttribute('data-tema', 'oscuro'); else raiz.removeAttribute('data-tema');
+            try { localStorage.setItem('tema', oscuro ? 'oscuro' : 'claro'); } catch (e) {}
+            marcar();
+        });
+    }
+
     // Dólar observado: se pide aparte para que la página no espere a la API.
     document.querySelectorAll('[data-dolar]').forEach(function (caja) {
         var pedido = null;

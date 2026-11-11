@@ -1,0 +1,5 @@
+{% extends "errores/_base.html" %}
+{% block titulo %}Solicitud no válida{% endblock %}
+{% block codigo %}Error 400{% endblock %}
+{% block encabezado %}No se pudo procesar la solicitud{% endblock %}
+{% block explicacion %}<p>El envío venía incompleto o con demasiados archivos a la vez. Vuelve a intentarlo; si cargas muchos archivos, divídelos en varias conciliaciones.</p>{% endblock %}

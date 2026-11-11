@@ -123,8 +123,10 @@ USE_I18N = True
 USE_TZ = True
 CSRF_TRUSTED_ORIGINS = csrf_origins
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+# Cookies solo por HTTPS en el servidor. En el computador (http://127.0.0.1) no, así se puede probar
+# con DJANGO_DEBUG=0 para ver las páginas de error propias.
+SESSION_COOKIE_SECURE = EN_SERVIDOR
+CSRF_COOKIE_SECURE = EN_SERVIDOR
 # Separador de miles con punto y decimales con coma (ver config/formatos/es_CL/formats.py).
 FORMAT_MODULE_PATH = ["config.formatos"]
 
@@ -134,7 +136,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 WHITENOISE_USE_FINDERS = True
 
 # Versión visible en el pie de página y usada para refrescar CSS/JS en el navegador.
-APP_VERSION = "3.3.0"
+APP_VERSION = "3.4.2"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

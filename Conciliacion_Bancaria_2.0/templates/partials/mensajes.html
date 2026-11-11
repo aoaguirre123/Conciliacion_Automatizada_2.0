@@ -1,0 +1,7 @@
+{# Mensajes de una sola vez (django.contrib.messages), con el estilo según su nivel. #}
+{% for mensaje in messages %}
+<div class="aviso {% if mensaje.level_tag == 'error' %}aviso--error{% elif mensaje.level_tag == 'warning' %}aviso--alerta{% elif mensaje.level_tag == 'info' %}aviso--info{% else %}aviso--exito{% endif %} aviso--separado" role="{% if mensaje.level_tag == 'error' %}alert{% else %}status{% endif %}">
+    <i data-lucide="{% if mensaje.level_tag == 'error' %}circle-alert{% elif mensaje.level_tag == 'warning' %}triangle-alert{% elif mensaje.level_tag == 'info' %}info{% else %}circle-check{% endif %}" aria-hidden="true"></i>
+    <p>{{ mensaje }}</p>
+</div>
+{% endfor %}

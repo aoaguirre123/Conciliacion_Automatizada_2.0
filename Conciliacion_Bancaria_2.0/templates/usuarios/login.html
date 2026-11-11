@@ -22,6 +22,12 @@
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ next }}">
 
+                {% if aviso and not mensaje %}
+                <div class="aviso aviso--info" role="status">
+                    <i data-lucide="info" aria-hidden="true"></i>
+                    <p>{{ aviso }}</p>
+                </div>
+                {% endif %}
                 {% if mensaje %}
                 <div class="aviso aviso--error" role="alert">
                     <i data-lucide="circle-alert" aria-hidden="true"></i>

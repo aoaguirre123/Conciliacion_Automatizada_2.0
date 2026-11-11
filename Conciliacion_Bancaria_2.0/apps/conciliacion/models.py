@@ -1,6 +1,11 @@
+from decimal import Decimal
+
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
+
+from . import parametros as p
 
 
 class Conciliacion(models.Model):
@@ -76,3 +81,62 @@ class BinTarjeta(models.Model):
 
     def __str__(self):
         return f"{self.bin} {self.marca} {self.banco}".strip()
+
+
+class Configuracion(models.Model):
+    """Parámetros de la conciliación que ajusta el administrador. Hay una sola fila (pk=1)."""
+
+    tolerancia_clp = models.PositiveIntegerField(
+        "tolerancia en pesos", default=p.TOLERANCIA_CLP,
+        validators=[MinValueValidator(p.RANGO_TOLERANCIA_CLP[0]), MaxValueValidator(p.RANGO_TOLERANCIA_CLP[1])],
+        help_text="Diferencia máxima, en pesos, entre Transbank y el BORDERO para dar una venta por conciliada.",
+    )
+    tolerancia_usd = models.DecimalField(
+        "tolerancia en dólares", max_digits=4, decimal_places=2, default=Decimal(str(p.TOLERANCIA_USD)),
+        validators=[MinValueValidator(Decimal(p.RANGO_TOLERANCIA_USD[0])), MaxValueValidator(Decimal(p.RANGO_TOLERANCIA_USD[1]))],
+        help_text="Diferencia máxima, en dólares, que se considera redondeo.",
+    )
+    ventana_dias = models.PositiveSmallIntegerField(
+        "ventana de días", default=p.VENTANA_DIAS,
+        validators=[MinValueValidator(p.RANGO_VENTANA_DIAS[0]), MaxValueValidator(p.RANGO_VENTANA_DIAS[1])],
+        help_text="Días de diferencia aceptados entre la venta y el pago registrado.",
+    )
+    palabras_cartola = models.CharField(
+        "palabras clave de la cartola", max_length=300, default=", ".join(p.PALABRAS_CARTOLA),
+        help_text="Palabras que identifican en la glosa de la cartola un abono de Transbank, separadas por comas.",
+    )
+    actualizada = models.DateTimeField(auto_now=True)
+    actualizada_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                        related_name="+")
+
+    class Meta:
+        verbose_name = "configuración"
+        verbose_name_plural = "configuración"
+
+    def __str__(self):
+        return "Configuración de la conciliación"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1  # una sola configuración
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def actual(cls):
+        """La configuración guardada o, si aún no se guarda ninguna, los valores por defecto (sin escribir)."""
+        return cls.objects.filter(pk=1).first() or cls(pk=1)
+
+    def es_por_defecto(self):
+        return self.parametros() == p.Parametros()
+
+    def restablecer(self):
+        """Vuelve todos los valores a los por defecto (sin guardar)."""
+        for campo in ("tolerancia_clp", "tolerancia_usd", "ventana_dias", "palabras_cartola"):
+            setattr(self, campo, self._meta.get_field(campo).get_default())
+
+    def parametros(self):
+        return p.Parametros(
+            tolerancia_clp=int(self.tolerancia_clp),
+            tolerancia_usd=float(self.tolerancia_usd),
+            ventana_dias=int(self.ventana_dias),
+            palabras_cartola=p.separar_palabras(self.palabras_cartola) or p.PALABRAS_CARTOLA,
+        )

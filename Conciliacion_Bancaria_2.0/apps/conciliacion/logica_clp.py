@@ -33,11 +33,15 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from . import lectura
+from . import parametros as parametros_mod
+from .parametros import Parametros
 
 from .bines import SIN_IDENTIFICAR, agrupar, bin_de, identificar_local
 
-TOLERANCIA = 10  # pesos: diferencias de redondeo entre el FrontOffice y Transbank
-VENTANA_DIAS = 3  # días entre la venta y el pago para considerarlos del mismo movimiento (los códigos se repiten en el año)
+# Valores por defecto; el administrador los cambia en «Configuración» (ver parametros.py).
+TOLERANCIA = parametros_mod.TOLERANCIA_CLP  # pesos: diferencia aceptada entre el FrontOffice y Transbank
+TOLERANCIA_REDONDEO = 10  # pesos: hasta aquí, la diferencia se informa como redondeo
+VENTANA_DIAS = parametros_mod.VENTANA_DIAS  # días entre la venta y el pago para considerarlos del mismo movimiento
 
 # Campo del formulario -> (medio de pago, nombre visible)
 # Campos antiguos del formulario (un archivo por medio). Se siguen aceptando; hoy basta con
@@ -83,7 +87,9 @@ ESTADOS = {
     "diferencia": "Diferencia de monto",
     "sin_registro": "Sin registro en BORDERO",
     "fuera_periodo": "Fuera del período del BORDERO",
+    "cuota": "Otra cuota de la misma venta",
 }
+NOMBRES_MES = {v: k.capitalize() for k, v in MESES.items() if k != "setiembre"}
 
 
 class ArchivoInvalido(ValueError):
@@ -137,6 +143,34 @@ def _fecha(valor):
     if m and m.group(2) in MESES:
         return date(int(m.group(3)), MESES[m.group(2)], int(m.group(1)))
     return None
+
+
+def _dia_mes(valor, anio):
+    """'22 octubre' (sin año) -> date con el año dado. Acepta también fechas completas."""
+    completa = _fecha(valor)
+    if completa or anio is None:
+        return completa
+    m = re.match(r"(\d{1,2})\s+(?:de\s+)?([a-z]+)", _sin_tildes(_texto(valor)))
+    if m and m.group(2) in MESES:
+        try:
+            return date(anio, MESES[m.group(2)], int(m.group(1)))
+        except ValueError:
+            return None
+    return None
+
+
+def _cuota(texto):
+    """'2/3' -> (2, 3); 'S/C', '-' o vacío -> (None, None)."""
+    m = re.match(r"\s*(\d+)\s*/\s*(\d+)", texto or "")
+    if m and int(m.group(2)) > 1:
+        return int(m.group(1)), int(m.group(2))
+    return None, None
+
+
+def _mas_meses(fecha, meses):
+    """(año, mes) de `fecha` más `meses` meses."""
+    total = fecha.year * 12 + fecha.month - 1 + meses
+    return total // 12, total % 12 + 1
 
 
 def _codigo(valor):
@@ -374,12 +408,25 @@ def leer_transbank(archivo, medio=None):
             resumen[_sin_tildes(etiqueta)] = raw.iat[i, 3]
 
     fecha_abono = None
+    desde = hasta = None
     fila_periodo = _buscar_fila(raw.iloc[:fila], lambda f: any("Periodo de consulta" in v for v in f))
     if fila_periodo is not None:
         valores = raw.iloc[fila_periodo].tolist()
+        anio = None
         for j, v in enumerate(valores):
             if "Periodo de consulta" in _texto(v) and j + 1 < len(valores):
                 fecha_abono = _fecha(valores[j + 1])
+                anio = re.search(r"(\d{4})", _texto(valores[j + 1]))
+                anio = int(anio.group(1)) if anio else None
+        for j, v in enumerate(valores):
+            if j + 1 < len(valores) and _texto(v).startswith("Día desde"):
+                desde = _dia_mes(valores[j + 1], anio)
+            if j + 1 < len(valores) and _texto(v).startswith("Día hasta"):
+                hasta = _dia_mes(valores[j + 1], anio)
+    desde = desde or fecha_abono
+    hasta = hasta or fecha_abono
+    if desde and hasta and hasta < desde:  # consulta que cruza el año (diciembre a enero)
+        hasta = hasta.replace(year=hasta.year + 1)
 
     ventas = []
     for i in range(fila + 2, len(raw)):
@@ -398,6 +445,8 @@ def leer_transbank(archivo, medio=None):
             "comision": _numero(raw.iat[i, c_comision]) + (_numero(raw.iat[i, c_iva]) if c_iva is not None else 0.0) if c_comision is not None else 0.0,
             "abono": _numero(raw.iat[i, c_abono]) if c_abono is not None else 0.0,
             "cuota": _texto(raw.iat[i, c_cuota]) if c_cuota is not None else "",
+            "cuota_num": _cuota(_texto(raw.iat[i, c_cuota]) if c_cuota is not None else "")[0],
+            "cuota_total": _cuota(_texto(raw.iat[i, c_cuota]) if c_cuota is not None else "")[1],
             "tarjeta": _texto(raw.iat[i, c_tarjeta]) if c_tarjeta is not None else "",
             "bin": bin_de(_texto(raw.iat[i, c_tarjeta])) if c_tarjeta is not None else None,
             "autorizacion": _texto(raw.iat[i, c_codigo]),
@@ -413,6 +462,8 @@ def leer_transbank(archivo, medio=None):
         "medio": medio_reporte or medio or "",
         "moneda": moneda,
         "fecha_abono": fecha_abono,
+        "desde": desde,
+        "hasta": hasta,
         "total_ventas": total_ventas,
         "comision": comision,
         "total_abono": total_abono,
@@ -430,8 +481,12 @@ def _encabezado_cartola(fila):
     return "fecha" in textos and any(t.startswith(("descripcion", "glosa", "detalle")) for t in textos) and any("abono" in t for t in textos)
 
 
-def leer_cartola(archivo):
-    """Abonos de Transbank en la cartola del banco (Banco de Chile, BancoEstado u otro con el mismo esquema)."""
+def leer_cartola(archivo, parametros=None):
+    """Abonos de Transbank en la cartola del banco (Banco de Chile, BancoEstado u otro con el mismo esquema).
+
+    Un movimiento es de Transbank si su glosa contiene alguna de las palabras clave configuradas.
+    """
+    patron = (parametros or Parametros()).patron_cartola()
     raw = _leer(archivo, _encabezado_cartola)
     fila = _buscar_fila(raw, _encabezado_cartola)
     if fila is None:
@@ -447,7 +502,7 @@ def leer_cartola(archivo):
     abonos = []
     for i in range(fila + 1, len(raw)):
         desc = _texto(raw.iat[i, c_desc])
-        if not re.search(r"transbank|tbk", desc, re.I):
+        if not patron.search(desc):
             continue
         monto = _numero(raw.iat[i, c_abono])
         if monto:
@@ -491,7 +546,7 @@ def clasificar(archivo):
 # ---------------------------------------------------------------------------
 # Cruce
 # ---------------------------------------------------------------------------
-def _cruzar(ventas, pagos, periodo):
+def _cruzar(ventas, pagos, periodo, tolerancia=TOLERANCIA, ventana=VENTANA_DIAS):
     usados = set()
     por_codigo = defaultdict(list)
     por_flex = defaultdict(list)
@@ -528,11 +583,14 @@ def _cruzar(ventas, pagos, periodo):
     def en_periodo(v):
         return periodo is None or (v["fecha"] is not None and periodo[0] <= v["fecha"] <= periodo[1])
 
-    cerca = lambda v: lambda p: abs(p["monto"] - v["monto"]) <= TOLERANCIA  # noqa: E731
-    cerca_y_en_fecha = lambda v: lambda p: cerca(v)(p) and dias(v, p) <= VENTANA_DIAS  # noqa: E731
+    # La tolerancia configurada solo vale cuando el código coincide. Los cruces sin código (por monto
+    # y fecha) exigen el mismo monto, salvo redondeo: con una tolerancia amplia unirían ventas distintas.
+    cerca = lambda v: lambda p: abs(p["monto"] - v["monto"]) <= tolerancia  # noqa: E731
+    igual = lambda v: lambda p: abs(p["monto"] - v["monto"]) <= min(tolerancia, TOLERANCIA_REDONDEO)  # noqa: E731
+    cerca_y_en_fecha = lambda v: lambda p: cerca(v)(p) and dias(v, p) <= ventana  # noqa: E731
     # Un código repetido con otro monto solo cuenta si la venta cae dentro del período del BORDERO
     # y el pago es de esos días: en un BORDERO largo, el mismo código puede ser de otra venta.
-    mismo_codigo_en_fecha = lambda v: lambda p: en_periodo(v) and dias(v, p) <= VENTANA_DIAS  # noqa: E731
+    mismo_codigo_en_fecha = lambda v: lambda p: en_periodo(v) and dias(v, p) <= ventana  # noqa: E731
     con_codigo = lambda v: por_codigo.get(v["codigo"], []) if v["codigo"] else []  # noqa: E731
     con_flex = lambda v: por_flex.get(v["codigo_flex"], []) if v["codigo_flex"] else []  # noqa: E731
     pendientes = list(ventas)
@@ -541,9 +599,9 @@ def _cruzar(ventas, pagos, periodo):
     pasadas = [
         (con_codigo, cerca_y_en_fecha, "conciliado", ""),
         (con_flex, cerca_y_en_fecha, "conciliado", "Código digitado distinto en el BORDERO"),
-        (lambda v: por_fecha.get(v["fecha"], []), cerca, "conciliado", "Cruzado por monto y fecha: revisar código"),
+        (lambda v: por_fecha.get(v["fecha"], []), igual, "conciliado", "Cruzado por monto y fecha: revisar código"),
         (con_codigo, mismo_codigo_en_fecha, "diferencia", "Mismo código, distinto monto"),
-        (con_flex, cerca, "conciliado", "Mismo código y monto en otra fecha: revisar"),
+        (con_flex, igual, "conciliado", "Mismo código y monto en otra fecha: revisar"),
     ]
     for candidatos, condicion, estado, nota in pasadas:
         siguientes = []
@@ -557,15 +615,20 @@ def _cruzar(ventas, pagos, periodo):
 
     for v in pendientes:
         dentro = en_periodo(v)
+        fuera = "La venta es de una fecha que el BORDERO no cubre"
+        if v.get("cuota_total"):
+            fuera = f"Cuota {v['cuota_num']}/{v['cuota_total']} de una venta de una fecha que el BORDERO no cubre"
         v.update(
             estado="sin_registro" if dentro else "fuera_periodo",
-            nota="" if dentro else "La venta es de una fecha que el BORDERO no cubre",
+            nota="" if dentro else fuera,
             monto_bordero=None, diferencia=None, documento_bordero="", cod_bordero="", fecha_bordero=None, cuenta_bordero="",
         )
 
     for v in ventas:
         if v["estado"] == "conciliado" and v["diferencia"]:
-            v["nota"] = (v["nota"] + "; " if v["nota"] else "") + "Diferencia de redondeo"
+            texto = ("Diferencia de redondeo" if abs(v["diferencia"]) <= TOLERANCIA_REDONDEO
+                     else "Diferencia dentro de la tolerancia")
+            v["nota"] = (v["nota"] + "; " if v["nota"] else "") + texto
 
     return [p for idx, p in enumerate(pagos) if idx not in usados]
 
@@ -740,18 +803,196 @@ def _archivos_usados(archivos, liquidaciones):
     return usados
 
 
-def procesar(archivos, identificar=identificar_local):
+# ---------------------------------------------------------------------------
+# Cuotas
+# ---------------------------------------------------------------------------
+def _clave_cuotas(v):
+    """Identifica la venta original de una cuota: el código y la tarjeta se repiten en cada cuota,
+    igual que la fecha y el monto original de la venta."""
+    return (v["codigo"], v["fecha"], v["monto"], v["tarjeta"], v["cuota_total"])
+
+
+def _separar_cuotas(ventas):
+    """(ventas que se cruzan con el BORDERO, {venta original: [cuotas]}).
+
+    Una venta en cuotas se registra una sola vez en el BORDERO, por el monto total. Si en los
+    archivos vienen varias cuotas de la misma venta, solo la primera se cruza; las demás toman su
+    resultado (si no, la segunda cuota quedaría «sin registro» porque el pago ya se usó).
+    """
+    grupos = defaultdict(list)
+    for v in ventas:
+        if v.get("cuota_total"):
+            grupos[_clave_cuotas(v)].append(v)
+    adicionales = set()
+    for cuotas in grupos.values():
+        cuotas.sort(key=lambda c: c["cuota_num"])
+        adicionales.update(id(c) for c in cuotas[1:])
+    return [v for v in ventas if id(v) not in adicionales], grupos
+
+
+def _completar_cuotas(grupos):
+    """Las cuotas que no se cruzaron toman el resultado de la primera cuota de su venta."""
+    for cuotas in grupos.values():
+        primera = cuotas[0]
+        for c in cuotas[1:]:
+            c.update(
+                estado="cuota",
+                nota=f"Cuota {c['cuota_num']}/{c['cuota_total']}: la venta se revisa con la cuota "
+                     f"{primera['cuota_num']}/{primera['cuota_total']} ({ESTADOS[primera['estado']].lower()})",
+                monto_bordero=None, diferencia=None, documento_bordero=primera.get("documento_bordero", ""),
+                cod_bordero=primera.get("cod_bordero", ""), fecha_bordero=primera.get("fecha_bordero"),
+                cuenta_bordero=primera.get("cuenta_bordero", ""),
+            )
+
+
+def _texto_mes(anio, mes):
+    return f"{NOMBRES_MES[mes]} {anio}"
+
+
+def _seguimiento_cuotas(grupos, liquidaciones):
+    """Ventas en cuotas: qué cuotas vienen en los archivos y cuáles no se encontraron.
+
+    Transbank abona cada cuota alrededor de un mes después de la anterior, así que la cuota k se
+    espera en el mes de la venta más k - 1 meses. Es una estimación: a veces una cuota se atrasa.
+    Una cuota que no está en los archivos se informa para que se concilie con un reporte que
+    abarque ese mes; no cambia el monto por revisar.
+    """
+    fechas = [f for liq in liquidaciones for f in (liq.get("desde"), liq.get("hasta")) if f]
+    periodo = (min(fechas), max(fechas)) if fechas else None
+    meses_periodo = (_mas_meses(periodo[0], 0), _mas_meses(periodo[1], 0)) if periodo else None
+
+    filas = []
+    for cuotas in grupos.values():
+        primera = cuotas[0]
+        total = primera["cuota_total"]
+        encontradas = sorted({c["cuota_num"] for c in cuotas})
+        faltantes = []
+        for k in range(1, total + 1):
+            if k in encontradas or primera["fecha"] is None:
+                continue
+            anio, mes = _mas_meses(primera["fecha"], k - 1)
+            en_periodo = bool(meses_periodo) and meses_periodo[0] <= (anio, mes) <= meses_periodo[1]
+            faltantes.append({"cuota": f"{k}/{total}", "mes": _texto_mes(anio, mes), "en_periodo": en_periodo})
+        if primera["fecha"] is None:
+            faltantes = [{"cuota": f"{k}/{total}", "mes": "", "en_periodo": False}
+                         for k in range(1, total + 1) if k not in encontradas]
+        filas.append({
+            "fecha": primera["fecha"].strftime("%d-%m-%Y") if primera["fecha"] else "",
+            "fecha_orden": primera["fecha"] or date.min,
+            "autorizacion": primera["autorizacion"],
+            "tarjeta": primera["tarjeta"],
+            "medio": primera["medio"],
+            "monto": primera["monto"],
+            "cuotas": total,
+            "monto_cuota": primera["valido"],
+            "encontradas": ", ".join(f"{k}/{total}" for k in encontradas),
+            "faltantes": faltantes,
+            "faltantes_texto": ", ".join(f"{f['cuota']} ({f['mes']})" if f["mes"] else f["cuota"] for f in faltantes),
+            "estado_venta": ESTADOS[primera["estado"]],
+        })
+    filas.sort(key=lambda f: (not f["faltantes"], f["fecha_orden"], f["autorizacion"]))
+    for f in filas:
+        del f["fecha_orden"]
+    return {
+        "ventas": filas,
+        "con_faltantes": sum(1 for f in filas if f["faltantes"]),
+        "faltantes": sum(len(f["faltantes"]) for f in filas),
+        "faltantes_en_periodo": sum(1 for f in filas for x in f["faltantes"] if x["en_periodo"]),
+        "periodo": f"{periodo[0]:%d-%m-%Y} al {periodo[1]:%d-%m-%Y}" if periodo else "",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fechas que cubren los reportes de Transbank
+# ---------------------------------------------------------------------------
+# Transbank no abona crédito y débito al mismo ritmo: el reporte de un día trae, por ejemplo,
+# crédito de hace 2 o 3 días y débito de ayer. Por eso las fechas se separan en dos grupos.
+GRUPOS = {"credito": "Crédito", "debito": "Débito y prepago"}
+_PATRON_DEBITO = re.compile(r"red ?compra|prepago|debito", re.I)
+
+
+def _grupo_pago(pago):
+    """Grupo de un pago del BORDERO: Redcompra va con débito y prepago; Visa, Mastercard, Amex y
+    Diners con crédito."""
+    if pago["cod"] == "RCO" or _PATRON_DEBITO.search(_sin_tildes(pago.get("tarjeta", ""))):
+        return "debito"
+    return "credito"
+
+
+def _grupo_venta(venta):
+    return "credito" if venta["medio"] == "Crédito" else "debito"
+
+
+def _cobertura(ventas):
+    """{grupo: fechas de venta que traen los reportes}. Las cuotas 2 en adelante no cuentan: son de
+    ventas antiguas, no de los días que abona el reporte."""
+    fechas = defaultdict(set)
+    for v in ventas:
+        if v["fecha"] and not (v.get("cuota_num") or 0) > 1:
+            fechas[_grupo_venta(v)].add(v["fecha"])
+    return dict(fechas)
+
+
+def _texto_fechas(fechas):
+    """{4, 5, 6, 9 de sept.} -> '04-09 al 06-09, 09-09'."""
+    tramos = []
+    for f in sorted(fechas):
+        if tramos and (f - tramos[-1][1]).days == 1:
+            tramos[-1][1] = f
+        else:
+            tramos.append([f, f])
+    return ", ".join(f"{a:%d-%m}" if a == b else f"{a:%d-%m} al {b:%d-%m}" for a, b in tramos)
+
+
+def texto_cobertura(cobertura):
+    return " · ".join(f"{GRUPOS[g]}: {_texto_fechas(cobertura[g])}" for g in GRUPOS if cobertura.get(g))
+
+
+def describir(archivo, tipo):
+    """Resumen corto que se muestra al soltar un archivo, antes de conciliar."""
+    try:
+        if tipo == "transbank":
+            texto = texto_cobertura(_cobertura(leer_transbank(archivo)["ventas"]))
+            return f"ventas de {texto}" if texto else ""
+        if tipo == "bordero":
+            _, periodo = _pagos_de_bordero(archivo)
+            return f"del {periodo[0]:%d-%m-%Y} al {periodo[1]:%d-%m-%Y}" if periodo else ""
+    except Exception:  # noqa: BLE001 - la prelectura es solo informativa: nunca debe impedir la carga
+        return ""
+    finally:
+        archivo.seek(0)
+    return ""
+
+
+def _separar_bordero_pendiente(pendientes, cobertura):
+    """(pagos sin abono de fechas que cubren los reportes, cantidad de pagos de otras fechas)."""
+    if not cobertura:
+        return pendientes, 0
+    cubiertos = [p for p in pendientes if p["fecha"] in cobertura.get(_grupo_pago(p), set())]
+    return cubiertos, len(pendientes) - len(cubiertos)
+
+
+def procesar(archivos, identificar=identificar_local, parametros=None):
     """Ejecuta la conciliación en pesos. Devuelve (resultado para la pantalla, reportes Excel).
 
     `identificar` recibe un conjunto de BIN y devuelve {bin: datos}; por defecto solo la marca.
+    `parametros` (tolerancia, ventana de días y palabras clave de la cartola); por defecto, los de
+    parametros.py.
     """
+    parametros = parametros or Parametros()
     pagos, periodo, borderos_repetidos, pagos_repetidos = leer_borderos(_lista(archivos["bordero"]))
     liquidaciones, repetidos = _leer_liquidaciones(archivos)
-    abonos_banco = leer_cartola(archivos["cartola"]) if archivos.get("cartola") else None
+    abonos_banco = leer_cartola(archivos["cartola"], parametros) if archivos.get("cartola") else None
 
     ventas, ventas_repetidas = _sin_ventas_repetidas([v for liq in liquidaciones for v in liq["ventas"]])
     _identificar_tarjetas(ventas, identificar)
-    pendientes_bordero = _cruzar(ventas, pagos, periodo)
+    a_cruzar, grupos_cuotas = _separar_cuotas(ventas)
+    pendientes_bordero = _cruzar(a_cruzar, pagos, periodo, parametros.tolerancia_clp, parametros.ventana_dias)
+    _completar_cuotas(grupos_cuotas)
+    cuotas = _seguimiento_cuotas(grupos_cuotas, liquidaciones)
+    # El cruce usa todo el BORDERO; lo pendiente se limita a las fechas que traen los reportes.
+    cobertura = _cobertura(ventas)
+    pendientes_bordero, bordero_sin_cobertura = _separar_bordero_pendiente(pendientes_bordero, cobertura)
 
     medios = _resumen_por_medio(ventas, liquidaciones)
     if abonos_banco is not None:
@@ -780,7 +1021,11 @@ def procesar(archivos, identificar=identificar_local):
         "diferencias": cuenta("diferencia"),
         "sin_registro": cuenta("sin_registro"),
         "fuera_periodo": cuenta("fuera_periodo"),
+        "otras_cuotas": cuenta("cuota"),
+        "cuotas_faltantes": cuotas["faltantes_en_periodo"],
         "bordero_pendiente": len(pendientes_bordero),
+        "bordero_sin_cobertura": bordero_sin_cobertura,
+        "cobertura": texto_cobertura(cobertura),
         "abonos_faltantes": abonos_faltantes,
         "archivos_repetidos": repetidos,
         "ventas_repetidas": ventas_repetidas,
@@ -805,14 +1050,16 @@ def procesar(archivos, identificar=identificar_local):
         "observaciones": observaciones,
         "tarjetas": _resumen_tarjetas(ventas),
         "archivos_usados": _archivos_usados(archivos, liquidaciones),
+        "parametros": parametros.como_dict(),
+        "cuotas": cuotas,
     }
     reportes = [
         ("completa", "Conciliación completa", "Resumen, todas las ventas de Transbank y lo pendiente del BORDERO.",
          "conciliacion_clp_completa.xlsx", _excel_completo(resultado, ventas, pendientes_bordero, resumen)),
         ("por_revisar", "Por revisar", "Diferencias de monto, ventas sin registro y cruces a revisar.",
          "conciliacion_clp_por_revisar.xlsx", _excel_ventas("Ventas por revisar", observaciones)),
-        ("bordero_pendiente", "BORDERO sin abono", "Pagos con tarjeta del BORDERO que no vienen en estos abonos.",
-         "bordero_sin_abono.xlsx", _excel_bordero(pendientes_bordero)),
+        ("bordero_pendiente", "BORDERO sin abono", "Pagos con tarjeta del BORDERO de las fechas que traen los reportes, sin abono.",
+         "bordero_sin_abono.xlsx", _excel_bordero(pendientes_bordero, resumen)),
     ]
     return resultado, reportes
 
@@ -900,7 +1147,18 @@ def _excel_ventas(titulo, filas):
     return _guardar(wb)
 
 
-def _excel_bordero(pagos):
+def _subtitulo_bordero(resumen):
+    texto = "Solo pagos de las fechas de venta que traen los reportes de Transbank cargados"
+    if resumen.get("cobertura"):
+        texto += f" ({resumen['cobertura']})"
+    texto += "."
+    if resumen.get("bordero_sin_cobertura"):
+        texto += (f" Se omitieron {resumen['bordero_sin_cobertura']} pagos de otras fechas: para revisarlos, "
+                  "carga los abonos de esos días.")
+    return texto
+
+
+def _excel_bordero(pagos, resumen=None):
     wb = Workbook()
     ws = wb.active
     ws.title = "BORDERO sin abono"
@@ -909,7 +1167,7 @@ def _excel_bordero(pagos):
         ("Fecha", "fecha", 12), ("Cód.", "cod", 8), ("Tarjeta", "tarjeta", 14), ("Documento", "documento", 14),
         ("Monto", "monto", 14), ("Cuenta", "cuenta", 12), ("Usuario", "usuario", 14),
         ("Archivo BORDERO", "archivo", 30), ("Fila en BORDERO", "fila", 14),
-    ], filas, "Pueden abonarse en otro día: revisa los abonos de los días siguientes.")
+    ], filas, _subtitulo_bordero(resumen or {}))
     return _guardar(wb)
 
 
@@ -947,11 +1205,21 @@ def _excel_completo(resultado, ventas, pendientes, resumen):
                 [("Banco emisor (país)", "nombre", 48)] + columnas_grupo, tarjetas["por_emisor"],
                 f"Banco identificado en {tarjetas['con_banco']} de {tarjetas['total']} ventas. Fuente: bin-list-data (CC-BY-4.0).")
 
+    cuotas = resultado.get("cuotas") or {}
+    if cuotas.get("ventas"):
+        _hoja_tabla(wb.create_sheet("Cuotas"), "Ventas en cuotas", [
+            ("Fecha venta", "fecha", 12), ("Medio", "medio", 10), ("Autorización", "autorizacion", 13),
+            ("Tarjeta", "tarjeta", 22), ("Monto venta", "monto", 15), ("N° cuotas", "cuotas", 10),
+            ("Monto cuota", "monto_cuota", 14), ("Cuotas en los archivos", "encontradas", 22),
+            ("Cuotas no encontradas (mes esperado)", "faltantes_texto", 42), ("Venta en el BORDERO", "estado_venta", 26),
+        ], cuotas["ventas"], "Las cuotas no encontradas no están en los reportes de Transbank cargados: concilia con un "
+                             "reporte que abarque el mes esperado para ubicarlas.")
+
     ws3 = wb.create_sheet("BORDERO sin abono")
     filas_b = [{**p, "fecha": p["fecha"].strftime("%d-%m-%Y") if p["fecha"] else ""} for p in pendientes]
     _hoja_tabla(ws3, "Pagos con tarjeta del BORDERO sin abono en estos archivos", [
         ("Fecha", "fecha", 12), ("Cód.", "cod", 8), ("Tarjeta", "tarjeta", 14), ("Documento", "documento", 14),
         ("Monto", "monto", 14), ("Cuenta", "cuenta", 12), ("Usuario", "usuario", 14),
         ("Archivo BORDERO", "archivo", 30), ("Fila en BORDERO", "fila", 14),
-    ], filas_b)
+    ], filas_b, _subtitulo_bordero(resumen))
     return _guardar(wb)

@@ -1,0 +1,12 @@
+{% extends "errores/_base.html" %}
+{% block titulo %}Formulario vencido{% endblock %}
+{% block codigo %}Formulario vencido{% endblock %}
+{% block encabezado %}No se pudo enviar el formulario{% endblock %}
+{% block explicacion %}
+<p>La página estuvo abierta mucho tiempo, la sesión se cerró en otra pestaña o el navegador bloqueó las cookies de este sitio. Por seguridad no se procesó el envío.</p>
+<p>Vuelve a la página anterior, recárgala y envía el formulario de nuevo. Si estabas conciliando, tendrás que volver a cargar los archivos.</p>
+{% endblock %}
+{% block acciones %}
+<a class="boton boton--principal" href="javascript:history.back()"><i data-lucide="arrow-left" aria-hidden="true"></i> Volver</a>
+<a class="boton boton--secundario" href="/"><i data-lucide="house" aria-hidden="true"></i> Ir al inicio</a>
+{% endblock %}

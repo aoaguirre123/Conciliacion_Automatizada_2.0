@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block titulo %}Confirmar borrado{% endblock %}
+
+{% block contenido %}
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>Confirmar borrado</h1>
+        <p class="encabezado__bajada">Revisa la lista antes de continuar. Solo se borrarán estas conciliaciones.</p>
+    </div>
+</header>
+
+<div class="aviso aviso--error aviso--separado" role="alert">
+    <i data-lucide="triangle-alert" aria-hidden="true"></i>
+    <div>
+        <strong>Se borrará{{ registros|length|pluralize:"n" }} {{ registros|length }} conciliaci{{ registros|length|pluralize:"ón,ones" }}{% if todas %}: {% if moneda == 'USD' %}todas las de dólares{% elif moneda == 'CLP' %}todas las de pesos{% else %}todo el historial{% endif %}{% endif %}</strong>
+        <p>También se borran sus reportes Excel guardados. Esta acción no se puede deshacer.</p>
+    </div>
+</div>
+
+<article class="tarjeta tarjeta--tabla">
+    <div class="tabla-marco tabla-marco--sin-borde tabla-marco--alto">
+        <table class="tabla tabla--ancha tabla--historial">
+            <thead>
+                <tr>
+                    <th scope="col">N°</th>
+                    <th scope="col">Fecha</th>
+                    <th scope="col">Tipo</th>
+                    <th scope="col">Período</th>
+                    <th scope="col">Resultado</th>
+                    <th scope="col">Usuario</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in registros %}
+                <tr>
+                    <th scope="row" class="num">{{ c.pk }}</th>
+                    <td class="num">{{ c.creada|date:"d-m-Y H:i" }}</td>
+                    <td>{{ c.get_moneda_display }}</td>
+                    <td class="num">{% include "conciliacion/_periodo.html" %}</td>
+                    <td>
+                        {% if c.cuadrado %}<span class="etiqueta etiqueta--ok">Cuadrado</span>
+                        {% else %}<span class="etiqueta etiqueta--error">Por revisar {{ c.simbolo }} {{ c.monto_por_revisar|floatformat:"-2g" }}</span>{% endif %}
+                    </td>
+                    <td>{% if c.usuario %}{{ c.usuario.get_full_name|default:c.usuario.username }}{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</article>
+
+<form method="post" action="{% url 'conciliacion:borrar_confirmado' %}" class="confirmar-borrado">
+    {% csrf_token %}
+    <input type="hidden" name="ids" value="{{ ids }}">
+    <input type="hidden" name="moneda" value="{{ moneda }}">
+    <label class="casilla">
+        <input type="checkbox" name="entiendo" value="1" required data-entiendo>
+        <span>Entiendo que se borrará{{ registros|length|pluralize:"n" }} {{ registros|length }} conciliaci{{ registros|length|pluralize:"ón,ones" }} y que no se puede deshacer.</span>
+    </label>
+    <div class="confirmar-borrado__botones">
+        <a class="boton boton--secundario" href="{% url 'conciliacion:historial' %}{% if moneda %}?moneda={{ moneda }}{% endif %}">Cancelar</a>
+        <button type="submit" class="boton boton--peligro-lleno">
+            <i data-lucide="trash-2" aria-hidden="true"></i> Borrar definitivamente
+        </button>
+    </div>
+</form>
+{% endblock %}

@@ -12,56 +12,86 @@
         </div>
     </div>
 
-    {% if resumen.banco_cargado %}
-        {% if resumen.abonos_faltantes %}
-        <div class="aviso aviso--alerta" role="status">
+    {# Alertas: piden revisar algo. Siempre visibles, en una línea, con el detalle desplegable. #}
+    {% if resumen.banco_cargado and resumen.abonos_faltantes %}
+    <details class="aviso aviso--alerta aviso--plegable">
+        <summary>
             <i data-lucide="triangle-alert" aria-hidden="true"></i>
-            <div>
-                <strong>Abono no encontrado en el banco</strong>
-                <p>No aparece en la cartola el abono de: {{ resumen.abonos_faltantes|join:", " }}.</p>
-            </div>
-        </div>
-        {% else %}
-        <div class="aviso aviso--exito" role="status">
-            <i data-lucide="landmark" aria-hidden="true"></i>
-            <div>
-                <strong>Abonos encontrados en el banco</strong>
+            <strong>Abono no encontrado en el banco: {{ resumen.abonos_faltantes|join:", " }}</strong>
+            <span class="plegable__mas">Detalle <i data-lucide="chevron-down" aria-hidden="true"></i></span>
+        </summary>
+        <div class="plegable__cuerpo"><p>No aparece en la cartola el abono de: {{ resumen.abonos_faltantes|join:", " }}. Revisa que la cartola cubra el día del abono.</p></div>
+    </details>
+    {% endif %}
+
+    {% if cuotas.faltantes_en_periodo %}
+    <details class="aviso aviso--alerta aviso--plegable">
+        <summary>
+            <i data-lucide="calendar-x" aria-hidden="true"></i>
+            <strong>{{ cuotas.faltantes_en_periodo }} cuota{{ cuotas.faltantes_en_periodo|pluralize }} no encontrada{{ cuotas.faltantes_en_periodo|pluralize }}: revisar</strong>
+            <span class="plegable__mas">Detalle <i data-lucide="chevron-down" aria-hidden="true"></i></span>
+        </summary>
+        <div class="plegable__cuerpo"><p>Debían llegar dentro del período de los reportes de Transbank cargados ({{ cuotas.periodo }}) y no vienen en ellos. Transbank a veces abona una cuota con uno o más meses de desfase: vuelve a conciliar con un reporte «Abonos por día» que abarque más meses para ubicarla. No se suman al monto por revisar. El detalle está en «Ventas en cuotas».</p></div>
+    </details>
+    {% endif %}
+
+    {# Notas: información de contexto, agrupada en una barra cerrada. #}
+    {% if resumen.banco_cargado and not resumen.abonos_faltantes or resumen.archivos_repetidos or resumen.ventas_repetidas or resumen.borderos_repetidos or resumen.pagos_repetidos or resumen.fuera_periodo or resumen.bordero_sin_cobertura or cuotas.faltantes and not cuotas.faltantes_en_periodo %}
+    <details class="notas">
+        <summary>
+            <i data-lucide="info" aria-hidden="true"></i>
+            <strong>Notas</strong>
+            <span class="notas__lista">
+                {% if resumen.banco_cargado and not resumen.abonos_faltantes %}<span>Abonos encontrados en el banco</span>{% endif %}
+                {% if resumen.fuera_periodo %}<span>{{ resumen.fuera_periodo|floatformat:"0g" }} fuera del período</span>{% endif %}
+                {% if resumen.bordero_sin_cobertura %}<span>{{ resumen.bordero_sin_cobertura|floatformat:"0g" }} pago{{ resumen.bordero_sin_cobertura|pluralize }} del BORDERO de otras fechas</span>{% endif %}
+                {% if cuotas.faltantes and not cuotas.faltantes_en_periodo %}<span>{{ cuotas.faltantes }} cuota{{ cuotas.faltantes|pluralize }} de otros meses</span>{% endif %}
+                {% if resumen.archivos_repetidos or resumen.ventas_repetidas %}<span>Datos repetidos de Transbank ignorados</span>{% endif %}
+                {% if resumen.borderos_repetidos or resumen.pagos_repetidos %}<span>Datos repetidos del BORDERO ignorados</span>{% endif %}
+            </span>
+            <span class="plegable__mas">Ver <i data-lucide="chevron-down" aria-hidden="true"></i></span>
+        </summary>
+        <div class="notas__cuerpo">
+            {% if resumen.banco_cargado and not resumen.abonos_faltantes %}
+            <div class="nota">
+                <strong><i data-lucide="landmark" aria-hidden="true"></i> Abonos encontrados en el banco</strong>
                 <p>El total abonado por Transbank en cada medio de pago aparece en la cartola bancaria.</p>
             </div>
+            {% endif %}
+            {% if resumen.fuera_periodo %}
+            <div class="nota">
+                <strong><i data-lucide="calendar-range" aria-hidden="true"></i> {{ resumen.fuera_periodo|floatformat:"0g" }} venta{{ resumen.fuera_periodo|pluralize }} fuera del período del BORDERO</strong>
+                <p>Son de fechas que el BORDERO cargado no cubre ({{ resumen.periodo_bordero }}), así que no se pudieron cruzar. No se suman al monto por revisar; están en la descarga «Conciliación completa».</p>
+            </div>
+            {% endif %}
+            {% if resumen.bordero_sin_cobertura %}
+            <div class="nota">
+                <strong><i data-lucide="filter" aria-hidden="true"></i> {{ resumen.bordero_sin_cobertura|floatformat:"0g" }} pago{{ resumen.bordero_sin_cobertura|pluralize }} del BORDERO de fechas que no traen los reportes de Transbank</strong>
+                <p>Los reportes cargados traen ventas de {{ resumen.cobertura }}. Los pagos del BORDERO de otras fechas no se listan como «sin abono»: su abono está en reportes de otros días. Para revisarlos, carga los abonos de esos días.</p>
+            </div>
+            {% endif %}
+            {% if cuotas.faltantes and not cuotas.faltantes_en_periodo %}
+            <div class="nota">
+                <strong><i data-lucide="calendar-range" aria-hidden="true"></i> {{ cuotas.faltantes }} cuota{{ cuotas.faltantes|pluralize }} de otros meses</strong>
+                <p>Hay ventas en cuotas con cuotas de meses que no cubren los reportes de Transbank cargados ({{ cuotas.periodo }}). Para verificarlas, concilia con un reporte que abarque esos meses. El detalle está en «Ventas en cuotas».</p>
+            </div>
+            {% endif %}
+            {% if resumen.archivos_repetidos or resumen.ventas_repetidas %}
+            <div class="nota">
+                <strong><i data-lucide="copy" aria-hidden="true"></i> Se ignoraron datos repetidos de Transbank</strong>
+                {% if resumen.archivos_repetidos %}<p>Archivo{{ resumen.archivos_repetidos|length|pluralize }} cargado{{ resumen.archivos_repetidos|length|pluralize }} más de una vez: {{ resumen.archivos_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
+                {% if resumen.ventas_repetidas %}<p>{{ resumen.ventas_repetidas }} venta{{ resumen.ventas_repetidas|pluralize }} venía{{ resumen.ventas_repetidas|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
+            </div>
+            {% endif %}
+            {% if resumen.borderos_repetidos or resumen.pagos_repetidos %}
+            <div class="nota">
+                <strong><i data-lucide="copy" aria-hidden="true"></i> Se ignoraron datos repetidos del BORDERO</strong>
+                {% if resumen.borderos_repetidos %}<p>Archivo{{ resumen.borderos_repetidos|length|pluralize }} cargado{{ resumen.borderos_repetidos|length|pluralize }} más de una vez: {{ resumen.borderos_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
+                {% if resumen.pagos_repetidos %}<p>{{ resumen.pagos_repetidos }} pago{{ resumen.pagos_repetidos|pluralize }} venía{{ resumen.pagos_repetidos|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
+            </div>
+            {% endif %}
         </div>
-        {% endif %}
-    {% endif %}
-
-    {% if resumen.archivos_repetidos or resumen.ventas_repetidas %}
-    <div class="aviso aviso--info" role="status">
-        <i data-lucide="copy" aria-hidden="true"></i>
-        <div>
-            <strong>Se ignoraron datos repetidos de Transbank</strong>
-            {% if resumen.archivos_repetidos %}<p>Archivo{{ resumen.archivos_repetidos|length|pluralize }} cargado{{ resumen.archivos_repetidos|length|pluralize }} más de una vez: {{ resumen.archivos_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
-            {% if resumen.ventas_repetidas %}<p>{{ resumen.ventas_repetidas }} venta{{ resumen.ventas_repetidas|pluralize }} venía{{ resumen.ventas_repetidas|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
-        </div>
-    </div>
-    {% endif %}
-
-    {% if resumen.borderos_repetidos or resumen.pagos_repetidos %}
-    <div class="aviso aviso--info" role="status">
-        <i data-lucide="copy" aria-hidden="true"></i>
-        <div>
-            <strong>Se ignoraron datos repetidos del BORDERO</strong>
-            {% if resumen.borderos_repetidos %}<p>Archivo{{ resumen.borderos_repetidos|length|pluralize }} cargado{{ resumen.borderos_repetidos|length|pluralize }} más de una vez: {{ resumen.borderos_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
-            {% if resumen.pagos_repetidos %}<p>{{ resumen.pagos_repetidos }} pago{{ resumen.pagos_repetidos|pluralize }} venía{{ resumen.pagos_repetidos|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
-        </div>
-    </div>
-    {% endif %}
-
-    {% if resumen.fuera_periodo %}
-    <div class="aviso aviso--info" role="status">
-        <i data-lucide="calendar-range" aria-hidden="true"></i>
-        <div>
-            <strong>{{ resumen.fuera_periodo }} venta{{ resumen.fuera_periodo|pluralize }} fuera del período del BORDERO</strong>
-            <p>Son de fechas que el BORDERO cargado no cubre ({{ resumen.periodo_bordero }}), así que no se pudieron cruzar. No se suman al monto por revisar; están en la descarga «Conciliación completa».</p>
-        </div>
-    </div>
+    </details>
     {% endif %}
 
     <div class="indicadores indicadores--cuatro">
@@ -79,7 +109,7 @@
         </div>
         <div class="indicador">
             <span class="indicador__valor">{{ resumen.bordero_pendiente }}</span>
-            <span class="indicador__texto">Pagos del BORDERO sin abono en estos archivos</span>
+            <span class="indicador__texto">Pagos del BORDERO sin abono{% if resumen.bordero_sin_cobertura %} (fechas de los reportes){% else %} en estos archivos{% endif %}</span>
         </div>
     </div>
 
@@ -193,10 +223,51 @@
     </article>
     {% endif %}
 
+    {% if cuotas.ventas %}
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza">
+            <h2>Ventas en cuotas</h2>
+            <p class="tarjeta__bajada">Cada venta en cuotas se cruza una sola vez con el BORDERO. El mes esperado de cada cuota es una estimación: un mes después de la anterior.</p>
+        </div>
+        <div class="tabla-marco">
+            <table class="tabla tabla--ancha">
+                <thead>
+                    <tr>
+                        <th scope="col">Cuotas no encontradas</th>
+                        <th scope="col">Fecha venta</th>
+                        <th scope="col">Autorización</th>
+                        <th scope="col">Tarjeta</th>
+                        <th scope="col" class="monto">Monto venta</th>
+                        <th scope="col">Cuotas en los archivos</th>
+                        <th scope="col">Venta en el BORDERO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cuotas.ventas %}
+                    <tr>
+                        <td>
+                            {% if c.faltantes %}
+                            {% for f in c.faltantes %}<div class="cuota-faltante"><span class="etiqueta etiqueta--error">Cuota {{ f.cuota }} no encontrada</span>{% if f.mes %}<span class="tabla__sub">Esperada en {{ f.mes|lower }}{% if not f.en_periodo %}, fuera de los archivos cargados{% endif %}</span>{% endif %}</div>{% endfor %}
+                            {% else %}<span class="etiqueta etiqueta--ok">Todas las cuotas</span>{% endif %}
+                        </td>
+                        <td class="num">{{ c.fecha }}</td>
+                        <td class="num">{{ c.autorizacion }}</td>
+                        <td><span class="sin-corte">{{ c.tarjeta }}</span><span class="tabla__sub">{{ c.medio }}</span></td>
+                        <td class="monto">{{ c.monto|floatformat:"0g" }}<span class="tabla__sub">{{ c.cuotas }} cuotas de {{ c.monto_cuota|floatformat:"0g" }}</span></td>
+                        <td class="num">{{ c.encontradas }}</td>
+                        <td>{{ c.estado_venta }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+    {% endif %}
+
     <article class="tarjeta">
         <div class="tarjeta__cabeza">
             <h2>Ventas por revisar</h2>
-            <p class="tarjeta__bajada">Diferencias de monto, ventas sin registro en el BORDERO y cruces con observación. Las diferencias de hasta $10 se consideran redondeo.</p>
+            <p class="tarjeta__bajada">Diferencias de monto, ventas sin registro en el BORDERO y cruces con observación. Las diferencias de hasta $ {% if parametros %}{{ parametros.tolerancia_clp|floatformat:"0g" }}{% else %}10{% endif %} con el mismo código se aceptan como conciliadas.</p>
         </div>
         {% if observaciones %}
         <div class="tabla-marco">

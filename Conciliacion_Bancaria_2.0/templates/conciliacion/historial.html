@@ -4,7 +4,7 @@
 {% block titulo %}Historial de conciliaciones{% endblock %}
 
 {% block scripts %}
-<script src="{% static 'js/atajos.js' %}?v={{ APP_VERSION }}" defer></script>
+<script src="{% static 'js/historial.js' %}?v={{ APP_VERSION }}" defer></script>
 {% endblock %}
 
 {% block contenido %}
@@ -13,22 +13,22 @@
         <h1>Historial de conciliaciones</h1>
         <p class="encabezado__bajada">Cada conciliación queda guardada con su resultado y sus archivos Excel. Ábrela para verla de nuevo o descarga los reportes directamente.</p>
     </div>
-    <form method="post" action="{% url 'conciliacion:borrar_historial' %}"
-          data-confirmar="¿Borrar las {{ total_historial }} conciliaciones del historial, en pesos y en dólares? Esta acción no se puede deshacer.">
+    {% if total_filtro %}
+    <form method="post" action="{% url 'conciliacion:borrar_historial' %}" id="form-borrar" class="acciones-historial" data-borrar>
         {% csrf_token %}
-        <button type="submit" class="boton boton--peligro"{% if not total_historial %} disabled{% endif %}>
+        <input type="hidden" name="moneda" value="{{ moneda }}">
+        <button type="submit" class="boton boton--peligro" data-borrar-seleccionadas>
             <i data-lucide="trash-2" aria-hidden="true"></i>
-            Borrar historial{% if total_historial %} ({{ total_historial }}){% endif %}
+            <span data-borrar-contador>Borrar seleccionadas</span>
+        </button>
+        <button type="submit" name="todas" value="1" class="boton boton--secundario">
+            Borrar todas{% if moneda == 'USD' %} las de dólares{% elif moneda == 'CLP' %} las de pesos{% endif %} ({{ total_filtro }})
         </button>
     </form>
+    {% endif %}
 </header>
 
-{% for mensaje in messages %}
-<div class="aviso aviso--exito aviso--separado" role="status">
-    <i data-lucide="circle-check" aria-hidden="true"></i>
-    <p>{{ mensaje }}</p>
-</div>
-{% endfor %}
+{% include "partials/mensajes.html" %}
 
 <div class="filtros" role="group" aria-label="Filtrar por moneda">
     <a class="filtro{% if not moneda %} filtro--activo{% endif %}" href="{% url 'conciliacion:historial' %}"{% if not moneda %} aria-current="true"{% endif %}>Todas</a>
@@ -39,9 +39,12 @@
 <article class="tarjeta tarjeta--tabla">
     {% if pagina.object_list %}
     <div class="tabla-marco tabla-marco--sin-borde">
-        <table class="tabla tabla--ancha">
+        <table class="tabla tabla--ancha tabla--historial">
             <thead>
                 <tr>
+                    <th scope="col" class="celda-seleccion">
+                        <input type="checkbox" class="seleccion" data-seleccionar-pagina aria-label="Seleccionar todas las conciliaciones de esta página">
+                    </th>
                     <th scope="col">N°</th>
                     <th scope="col">Fecha</th>
                     <th scope="col">Tipo</th>
@@ -55,6 +58,9 @@
             <tbody>
                 {% for c in pagina %}
                 <tr>
+                    <td class="celda-seleccion">
+                        <input type="checkbox" class="seleccion" name="ids" value="{{ c.pk }}" form="form-borrar" data-seleccion aria-label="Seleccionar la conciliación N° {{ c.pk }}">
+                    </td>
                     <th scope="row" class="num">{{ c.pk }}</th>
                     <td class="num">{{ c.creada|date:"d-m-Y H:i" }}</td>
                     <td>{{ c.get_moneda_display }}</td>

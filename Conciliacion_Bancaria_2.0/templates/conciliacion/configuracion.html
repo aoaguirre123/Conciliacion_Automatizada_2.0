@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% load static %}
+
+{% block titulo %}Configuración{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/atajos.js' %}?v={{ APP_VERSION }}" defer></script>
+{% endblock %}
+
+{% block contenido %}
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>Configuración</h1>
+        <p class="encabezado__bajada">Criterios que usan las conciliaciones en pesos y en dólares. Los cambios se aplican desde la próxima conciliación; las del historial conservan los criterios con que se hicieron.</p>
+    </div>
+</header>
+
+{% include "partials/mensajes.html" %}
+
+{% if formulario.errors %}
+<div class="aviso aviso--error aviso--separado" role="alert">
+    <i data-lucide="circle-alert" aria-hidden="true"></i>
+    <div>
+        <strong>No se guardaron los cambios</strong>
+        <p>Corrige los valores marcados. Mientras tanto siguen vigentes los anteriores.</p>
+    </div>
+</div>
+{% endif %}
+
+<form method="post" class="flujo" id="form-configuracion" novalidate>
+    {% csrf_token %}
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true"><i data-lucide="scale" aria-hidden="true"></i></span>
+            <div>
+                <h2>Tolerancia de montos</h2>
+                <p class="tarjeta__bajada">Si la diferencia entre Transbank y el registro del hotel es igual o menor a la tolerancia, la venta se da por conciliada y se marca con una nota.</p>
+            </div>
+        </div>
+        <div class="configuracion">
+            {% include "conciliacion/_campo_config.html" with campo=formulario.tolerancia_clp prefijo="$" ayuda="Diferencia aceptada entre Transbank y el BORDERO. De $0 a $1.000; por defecto $10." %}
+            {% include "conciliacion/_campo_config.html" with campo=formulario.tolerancia_usd prefijo="US$" ayuda="Diferencia aceptada como redondeo. De US$ 0 a US$ 5; por defecto US$ 0,10." %}
+        </div>
+    </article>
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true"><i data-lucide="calendar-range" aria-hidden="true"></i></span>
+            <div>
+                <h2>Cruce de fechas y cartola</h2>
+                <p class="tarjeta__bajada">Cuántos días puede haber entre la venta y el pago registrado, y cómo se reconocen los abonos de Transbank en la cartola en pesos.</p>
+            </div>
+        </div>
+        <div class="configuracion">
+            {% include "conciliacion/_campo_config.html" with campo=formulario.ventana_dias sufijo="días" ayuda="Días aceptados entre la venta y el pago registrado. De 0 a 15; por defecto 3." %}
+            {% include "conciliacion/_campo_config.html" with campo=formulario.palabras_cartola ayuda="Identifican los abonos de Transbank en la cartola, separadas por comas. Por defecto: transbank, tbk." %}
+        </div>
+    </article>
+
+</form>
+
+<form method="post" action="{% url 'conciliacion:restablecer_configuracion' %}" id="form-restablecer"
+      data-confirmar="¿Restablecer todos los valores por defecto? Los cambios guardados se perderán.">
+    {% csrf_token %}
+</form>
+
+<div class="configuracion__pie">
+    <p class="configuracion__estado">
+        {% if por_defecto %}Se están usando los valores por defecto.{% endif %}
+        {% if guardada %}Última modificación: {{ actual.actualizada|date:"d-m-Y H:i" }}{% if actual.actualizada_por %}, por {{ actual.actualizada_por.get_full_name|default:actual.actualizada_por.username }}{% endif %}.{% endif %}
+    </p>
+    <div class="configuracion__botones">
+        {% if not por_defecto %}
+        <button type="submit" form="form-restablecer" class="boton boton--secundario">
+            <i data-lucide="rotate-ccw" aria-hidden="true"></i> Restablecer valores por defecto
+        </button>
+        {% endif %}
+        <button type="submit" form="form-configuracion" class="boton boton--principal">
+            <i data-lucide="save" aria-hidden="true"></i> Guardar cambios
+        </button>
+    </div>
+</div>
+{% endblock %}

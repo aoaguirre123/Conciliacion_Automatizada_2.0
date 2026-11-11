@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block titulo %}Inicio{% endblock %} | Hotel Plaza San Francisco</title>
+    <script>
+        /* Modo noche: se aplica antes de pintar la página para que no parpadee. */
+        (function () {
+            var tema = null;
+            try { tema = localStorage.getItem('tema'); } catch (e) {}
+            if (!tema && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) tema = 'oscuro';
+            if (tema === 'oscuro') document.documentElement.setAttribute('data-tema', 'oscuro');
+        })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;500;600;700&display=swap">

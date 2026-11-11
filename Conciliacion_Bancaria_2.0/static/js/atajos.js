@@ -1,6 +1,6 @@
-/* Botones de ejemplo y de borrar historial (templates/conciliacion/_atajos.html). */
+/* Botones de ejemplo, borrar historial y restablecer la configuración: confirmación y doble clic. */
 document.addEventListener('DOMContentLoaded', function () {
-    // Borrar historial: pedir confirmación antes de enviar.
+    // Borrar historial y restablecer configuración: pedir confirmación antes de enviar.
     document.querySelectorAll('[data-confirmar]').forEach(function (form) {
         form.addEventListener('submit', function (evento) {
             if (!window.confirm(form.getAttribute('data-confirmar'))) evento.preventDefault();

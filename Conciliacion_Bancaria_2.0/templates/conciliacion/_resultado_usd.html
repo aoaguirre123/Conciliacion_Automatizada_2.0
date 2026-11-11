@@ -16,57 +16,70 @@
         </div>
     </div>
 
-    {% if ws == 1 %}
-    <div class="aviso aviso--exito" role="status">
-        <i data-lucide="landmark" aria-hidden="true"></i>
-        <div>
-            <strong>Abono encontrado en el banco</strong>
-            <p>El abono calculado por Transbank, US$ {{ abonado|floatformat:"2g" }}, aparece en la cartola bancaria.</p>
-        </div>
-    </div>
-    {% elif ws == 0 %}
-    <div class="aviso aviso--alerta" role="status">
-        <i data-lucide="triangle-alert" aria-hidden="true"></i>
-        <div>
+    {# Alertas: piden revisar algo. Siempre visibles, en una línea, con el detalle desplegable. #}
+    {% if ws == 0 %}
+    <details class="aviso aviso--alerta aviso--plegable">
+        <summary>
+            <i data-lucide="triangle-alert" aria-hidden="true"></i>
             <strong>Abono no encontrado en el banco</strong>
+            <span class="plegable__mas">Detalle <i data-lucide="chevron-down" aria-hidden="true"></i></span>
+        </summary>
+        <div class="plegable__cuerpo">
             {% if abono_calculado %}
             <p>Transbank informa un abono calculado de US$ {{ abono_calculado|floatformat:"2g" }}, pero ese monto no aparece en la cartola bancaria.</p>
             {% else %}
             <p>El archivo de Transbank no tiene la línea «Abono Calculado (=):», así que no hubo monto que buscar en el banco.</p>
             {% endif %}
         </div>
-    </div>
-    {% endif %}
-
-    {% if resumen.erp_repetidos or resumen.filas_erp_repetidas %}
-    <div class="aviso aviso--info" role="status">
-        <i data-lucide="copy" aria-hidden="true"></i>
-        <div>
-            <strong>Se ignoraron datos repetidos del ERP</strong>
-            {% if resumen.erp_repetidos %}<p>Archivo{{ resumen.erp_repetidos|length|pluralize }} cargado{{ resumen.erp_repetidos|length|pluralize }} más de una vez: {{ resumen.erp_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
-            {% if resumen.filas_erp_repetidas %}<p>{{ resumen.filas_erp_repetidas }} fila{{ resumen.filas_erp_repetidas|pluralize }} venía{{ resumen.filas_erp_repetidas|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
-        </div>
-    </div>
+    </details>
     {% endif %}
 
     {% if resumen.sin_marca %}
-    <div class="aviso aviso--alerta" role="status">
-        <i data-lucide="triangle-alert" aria-hidden="true"></i>
-        <div>
-            <strong>Ventas sin marca de tarjeta identificada</strong>
-            <p>{{ resumen.sin_marca }} venta{{ resumen.sin_marca|pluralize }} de Transbank no tiene{{ resumen.sin_marca|pluralize:"n" }} una marca reconocida. Se buscó en los pagos de todas las tarjetas; revisa la observación en los Excel.</p>
-        </div>
-    </div>
+    <details class="aviso aviso--alerta aviso--plegable">
+        <summary>
+            <i data-lucide="triangle-alert" aria-hidden="true"></i>
+            <strong>{{ resumen.sin_marca }} venta{{ resumen.sin_marca|pluralize }} sin marca de tarjeta identificada</strong>
+            <span class="plegable__mas">Detalle <i data-lucide="chevron-down" aria-hidden="true"></i></span>
+        </summary>
+        <div class="plegable__cuerpo"><p>{{ resumen.sin_marca }} venta{{ resumen.sin_marca|pluralize }} de Transbank no tiene{{ resumen.sin_marca|pluralize:"n" }} una marca reconocida. Se buscó en los pagos de todas las tarjetas; revisa la observación en los Excel.</p></div>
+    </details>
     {% endif %}
 
-    {% if resumen.fuera_periodo %}
-    <div class="aviso aviso--info" role="status">
-        <i data-lucide="calendar" aria-hidden="true"></i>
-        <div>
-            <strong>Ventas fuera del período del ERP</strong>
-            <p>{{ resumen.fuera_periodo }} venta{{ resumen.fuera_periodo|pluralize }} sin registro {{ resumen.fuera_periodo|pluralize:"es,son" }} de fechas que el ERP no cubre, y no se {{ resumen.fuera_periodo|pluralize:"cuenta,cuentan" }} como monto por revisar.</p>
+    {# Notas: información de contexto, agrupada en una barra cerrada. #}
+    {% if ws == 1 or resumen.erp_repetidos or resumen.filas_erp_repetidas or resumen.fuera_periodo %}
+    <details class="notas">
+        <summary>
+            <i data-lucide="info" aria-hidden="true"></i>
+            <strong>Notas</strong>
+            <span class="notas__lista">
+                {% if ws == 1 %}<span>Abono encontrado en el banco</span>{% endif %}
+                {% if resumen.fuera_periodo %}<span>{{ resumen.fuera_periodo }} fuera del período</span>{% endif %}
+                {% if resumen.erp_repetidos or resumen.filas_erp_repetidas %}<span>Datos repetidos del ERP ignorados</span>{% endif %}
+            </span>
+            <span class="plegable__mas">Ver <i data-lucide="chevron-down" aria-hidden="true"></i></span>
+        </summary>
+        <div class="notas__cuerpo">
+            {% if ws == 1 %}
+            <div class="nota">
+                <strong><i data-lucide="landmark" aria-hidden="true"></i> Abono encontrado en el banco</strong>
+                <p>El abono calculado por Transbank, US$ {{ abonado|floatformat:"2g" }}, aparece en la cartola bancaria.</p>
+            </div>
+            {% endif %}
+            {% if resumen.fuera_periodo %}
+            <div class="nota">
+                <strong><i data-lucide="calendar" aria-hidden="true"></i> Ventas fuera del período del ERP</strong>
+                <p>{{ resumen.fuera_periodo }} venta{{ resumen.fuera_periodo|pluralize }} sin registro {{ resumen.fuera_periodo|pluralize:"es,son" }} de fechas que el ERP no cubre, y no se {{ resumen.fuera_periodo|pluralize:"cuenta,cuentan" }} como monto por revisar.</p>
+            </div>
+            {% endif %}
+            {% if resumen.erp_repetidos or resumen.filas_erp_repetidas %}
+            <div class="nota">
+                <strong><i data-lucide="copy" aria-hidden="true"></i> Se ignoraron datos repetidos del ERP</strong>
+                {% if resumen.erp_repetidos %}<p>Archivo{{ resumen.erp_repetidos|length|pluralize }} cargado{{ resumen.erp_repetidos|length|pluralize }} más de una vez: {{ resumen.erp_repetidos|join:", " }}. Se leyó una sola vez.</p>{% endif %}
+                {% if resumen.filas_erp_repetidas %}<p>{{ resumen.filas_erp_repetidas }} fila{{ resumen.filas_erp_repetidas|pluralize }} venía{{ resumen.filas_erp_repetidas|pluralize:"n" }} en más de un archivo y se contó una sola vez.</p>{% endif %}
+            </div>
+            {% endif %}
         </div>
-    </div>
+    </details>
     {% endif %}
 
     <div class="indicadores">

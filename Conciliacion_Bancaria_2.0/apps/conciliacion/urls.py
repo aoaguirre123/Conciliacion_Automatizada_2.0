@@ -14,6 +14,9 @@ urlpatterns = [
     path("pesos/ejemplo/", views.ejemplo_pesos, name="ejemplo_pesos"),
     path("historial/", views.historial, name="historial"),
     path("historial/borrar/", views.borrar_historial, name="borrar_historial"),
+    path("historial/borrar/confirmar/", views.borrar_confirmado, name="borrar_confirmado"),
     path("historial/<int:pk>/", views.detalle, name="detalle"),
     path("historial/<int:pk>/descargar/<slug:clave>/", views.descargar, name="descargar"),
+    path("configuracion/", views.configuracion, name="configuracion"),
+    path("configuracion/restablecer/", views.restablecer_configuracion, name="restablecer_configuracion"),
 ]

@@ -14,8 +14,15 @@
     <div class="encabezado__texto">
         <h1>Conciliación en pesos</h1>
         <p class="encabezado__bajada">Cruza los abonos de Transbank (crédito, débito y prepago) con los pagos con tarjeta del BORDERO y verifica que cada abono llegó al banco. Cada análisis queda guardado en el <a href="{% url 'conciliacion:historial' %}">historial</a>.</p>
+        <p class="criterios">
+            <i data-lucide="scale" aria-hidden="true"></i>
+            <span>Tolerancia: $ {{ configuracion.tolerancia_clp|floatformat:"0g" }} · fechas a {{ configuracion.ventana_dias }} día{{ configuracion.ventana_dias|pluralize }} de distancia como máximo.</span>
+            {% if user.is_staff %}<a href="{% url 'conciliacion:configuracion' %}">Cambiar</a>{% endif %}
+        </p>
     </div>
 </header>
+
+{% include "partials/mensajes.html" %}
 
 {% if errores %}
 <div class="aviso aviso--error aviso--separado" role="alert">

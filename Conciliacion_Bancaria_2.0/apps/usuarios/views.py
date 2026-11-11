@@ -3,7 +3,6 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.shortcuts import redirect, render, resolve_url
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
 
 
 def _destino(request):
@@ -21,6 +20,8 @@ def iniciar_sesion(request):
         return redirect(_destino(request))
 
     contexto = {"next": request.GET.get("next", "")}
+    if contexto["next"] and request.method == "GET":
+        contexto["aviso"] = "Inicia sesión para continuar. Si estabas trabajando, tu sesión terminó."
     if request.method == "POST":
         email = request.POST.get("email", "").strip()
         password = request.POST.get("password", "")
@@ -42,7 +43,8 @@ def iniciar_sesion(request):
     return render(request, "usuarios/login.html", contexto)
 
 
-@require_POST
 def cerrar_sesion(request):
+    if request.method != "POST":  # abrir /usuarios/logout/ en el navegador no cierra la sesión
+        return redirect(settings.LOGIN_REDIRECT_URL if request.user.is_authenticated else settings.LOGIN_URL)
     logout(request)
     return redirect(settings.LOGOUT_REDIRECT_URL)

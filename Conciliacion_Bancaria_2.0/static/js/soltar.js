@@ -61,7 +61,7 @@ function iniciarSoltar(caja) {
             var detalle = document.createElement('span');
             detalle.className = 'soltado__detalle';
             detalle.textContent = s.pendiente ? 'Identificando…'
-                : tipo ? tipo.etiqueta + ' · ' + tamano(s.archivo.size)
+                : tipo ? tipo.etiqueta + ' · ' + tamano(s.archivo.size) + (s.detalle ? ' · ' + s.detalle : '')
                 : 'No se usará: ' + s.motivo;
             texto.appendChild(nombre);
             texto.appendChild(detalle);
@@ -104,6 +104,7 @@ function iniciarSoltar(caja) {
                     s.pendiente = false;
                     s.tipo = dato.tipo || null;
                     s.motivo = dato.motivo || 'No se reconoció el archivo.';
+                    s.detalle = dato.detalle || '';
                     // Las entradas de un solo archivo: el último que se suelta reemplaza al anterior.
                     if (s.tipo && !tipos[s.tipo]) s.tipo = null;
                     if (s.tipo && tipos[s.tipo].unico) {

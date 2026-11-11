@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load static %}
+{# Páginas de error: sin menú ni datos del usuario, para que se muestren aunque falle la base de datos. #}
+{% block clase_body %}pagina-error{% endblock %}
+
+{% block estructura %}
+<main class="error" id="contenido">
+    <div class="error__caja">
+        <a class="error__marca" href="/"><img src="{% static 'img/logo.webp' %}" alt="Hotel Plaza San Francisco, ir al inicio"></a>
+        <p class="error__codigo">{% block codigo %}{% endblock %}</p>
+        <h1>{% block encabezado %}{% endblock %}</h1>
+        <div class="error__texto">{% block explicacion %}{% endblock %}</div>
+        <div class="error__acciones">
+            {% block acciones %}
+            <a class="boton boton--principal" href="/"><i data-lucide="house" aria-hidden="true"></i> Ir al inicio</a>
+            <a class="boton boton--secundario" href="/conciliacion/historial/"><i data-lucide="history" aria-hidden="true"></i> Ver historial</a>
+            {% endblock %}
+        </div>
+    </div>
+</main>
+{% endblock %}

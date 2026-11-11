@@ -106,19 +106,19 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 <a id="estado-actual" name="estado-actual"></a>
 ## 🚦 Estado Actual del Desarrollo
 
-La versión vigente del sistema es **Conciliación bancaria v3.3.0**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
+La versión vigente del sistema es **Conciliación bancaria v3.4.2**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
 
 #### Módulos Disponibles
-* **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**, en uno o varios archivos) contra los pagos con tarjeta del **BORDERO** por código de autorización y monto, con verificación del abono en la cartola de **BancoEstado** o **Banco de Chile**. Detecta diferencias de monto, ventas sin registro, ventas fuera del período, errores de digitación del código y datos duplicados.
+* **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**, en uno o varios archivos) contra los pagos con tarjeta del **BORDERO** por código de autorización y monto, con verificación del abono en la cartola de **BancoEstado** o **Banco de Chile**. Detecta diferencias de monto, ventas sin registro, ventas fuera del período, errores de digitación del código y datos duplicados. Reconoce las **ventas en cuotas**: cada venta se cruza una sola vez con el BORDERO y se informan las cuotas que no vienen en los reportes cargados, con el mes en que se esperaban, para volver a conciliar con un período más amplio. Al soltar los archivos muestra qué fechas de venta trae cada reporte de Transbank, y los **pagos del BORDERO sin abono** se limitan a esas fechas (crédito y débito por separado), indicando cuántos pagos de otras fechas se omitieron.
 * **Conciliación en Dólares (USD):** Cruce entre Transbank, el BORDERO (ERP), las cuentas por cobrar de **Amex, Diners, Visa y Mastercard** y la cartola en dólares de **Banco de Chile**. Muestra como referencia el dólar observado del día (**mindicador.cl**).
 * **Historial:** Registro de todas las conciliaciones guardadas, con su resultado y los reportes Excel descargables.
 * **Identificación de Tarjetas:** Cada venta se identifica por los **6 primeros dígitos (BIN)** de la tarjeta: **marca, tipo (crédito, débito o prepago), banco emisor y país**, sin depender de internet. En dólares se usa para saber la marca de cada venta.
+* **Configuración:** Pantalla para administradores donde se ajustan la **tolerancia de montos** en pesos (hasta $1.000) y en dólares (hasta US$ 5), la **ventana de días** entre la venta y el pago, y las **palabras clave** que identifican los abonos de Transbank en la cartola. Los valores fuera de rango se rechazan y cada conciliación guarda los criterios con que se hizo.
 * **Usuarios:** Inicio de sesión por correo; todas las pantallas requieren sesión.
 
 #### Pendientes
-* Margen de tolerancia configurable ($500 a $1.000 CLP); hoy es fijo.
 * Pre-visualización de los archivos antes de conciliar.
-* Clasificación de cuotas diferidas, anulaciones y notas de crédito, con acción sugerida por caso.
+* Clasificación de anulaciones y notas de crédito, con acción sugerida por caso.
 * Exportación en PDF.
 * Dashboard consolidado con indicadores acumulados, gráficos y filtros por fecha.
 * Arrastre de movimientos pendientes entre conciliaciones.
@@ -185,7 +185,9 @@ Conciliacion_Bancaria_2.0/
 │       ├── lectura.py         lectura de archivos (.xls, .xlsx, .ods, CSV y HTML) detectando el formato
 │       ├── logica.py          conciliación en dólares y sus Excel
 │       ├── logica_clp.py      conciliación en pesos contra el BORDERO y sus Excel
-│       ├── models.py          historial (Conciliacion, Reporte) y BIN de tarjetas (BinTarjeta)
+│       ├── models.py          historial (Conciliacion, Reporte), BIN de tarjetas (BinTarjeta) y Configuracion
+│       ├── parametros.py      tolerancias, ventana de días y palabras clave de la cartola (valores por defecto)
+│       ├── forms.py           formulario de la pantalla de configuración
 │       ├── registro.py        guarda cada conciliación en el historial
 │       ├── dolar.py           dólar observado (mindicador.cl)
 │       ├── bines.py           identificación de tarjetas por BIN

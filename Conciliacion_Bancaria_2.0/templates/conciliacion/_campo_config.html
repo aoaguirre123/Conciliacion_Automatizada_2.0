@@ -1,0 +1,10 @@
+<div class="campo{% if campo.errors %} campo--error{% endif %}">
+    <label class="campo__etiqueta" for="{{ campo.id_for_label }}">{{ campo.label|capfirst }}</label>
+    <div class="campo__control">
+        {% if prefijo %}<span class="campo__unidad">{{ prefijo }}</span>{% endif %}
+        {{ campo }}
+        {% if sufijo %}<span class="campo__unidad">{{ sufijo }}</span>{% endif %}
+    </div>
+    <p class="campo__ayuda" id="{{ campo.auto_id }}_helptext">{{ ayuda }}</p>
+    {% for error in campo.errors %}<p class="campo__mensaje" role="alert">{{ error }}</p>{% endfor %}
+</div>
