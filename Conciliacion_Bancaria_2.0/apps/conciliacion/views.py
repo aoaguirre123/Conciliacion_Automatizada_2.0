@@ -1,5 +1,7 @@
 import functools
 import logging
+from datetime import date, timedelta
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -7,9 +9,12 @@ from django.contrib.auth.decorators import login_required
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.paginator import Paginator
 from django.db import DatabaseError
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.usuarios.perfiles import es_administrador, solo_administradores, solo_conciliadores
 
@@ -246,13 +251,112 @@ def identificar_pesos(request):
 # ---------------------------------------------------------------------------
 @login_required
 def historial(request):
-    moneda = request.GET.get("moneda", "")
+    filtro = _filtro_historial(request.GET)
+    for aviso in filtro["avisos"]:
+        messages.warning(request, aviso)
     registros = Conciliacion.objects.select_related("usuario").prefetch_related("reportes").defer("resultado")
-    registros = _filtrar_moneda(registros, moneda)
+    registros = _aplicar_filtro(registros, filtro)
     pagina = Paginator(registros, 20).get_page(request.GET.get("pagina"))
+
+    # Totales de lo filtrado: cuántas, cuántas cuadradas y el monto por revisar de cada moneda.
+    totales = {fila["moneda"]: fila for fila in registros.order_by().values("moneda").annotate(
+        cantidad=Count("pk"), cuadradas=Count("pk", filter=Q(cuadrado=True)), por_revisar=Sum("monto_por_revisar"),
+    )}
     return render(request, "conciliacion/historial.html", {
-        "pagina": pagina, "moneda": moneda, "total_filtro": pagina.paginator.count,
+        "pagina": pagina,
+        "moneda": filtro["moneda"],
+        "filtro": filtro,
+        "con_fechas": bool(filtro["desde"] or filtro["hasta"]),
+        "total_filtro": pagina.paginator.count,
+        "totales_pesos": totales.get(Conciliacion.PESOS),
+        "totales_dolares": totales.get(Conciliacion.DOLARES),
+        "consulta": _consulta(filtro),
+        "consulta_sin_moneda": _consulta(filtro, moneda=""),
+        "atajos": _atajos_fechas(filtro),
     })
+
+
+# ---------------------------------------------------------------------------
+# Filtro del historial por moneda y por fechas
+# ---------------------------------------------------------------------------
+FILTRO_POR = {"periodo": "Período conciliado", "creada": "Fecha en que se hizo"}
+
+
+def _fecha_param(texto):
+    """'2026-09-04' (lo que envía <input type="date">) -> date. None si viene vacío o no es fecha."""
+    texto = (texto or "").strip()
+    if not texto:
+        return None, False
+    try:
+        return date.fromisoformat(texto), False
+    except ValueError:
+        return None, True
+
+
+def _filtro_historial(datos):
+    """Lee moneda, «por» (período conciliado o fecha en que se hizo), desde y hasta de GET o POST."""
+    moneda = datos.get("moneda", "")
+    moneda = moneda if moneda in (Conciliacion.DOLARES, Conciliacion.PESOS) else ""
+    por = datos.get("por") if datos.get("por") in FILTRO_POR else "periodo"
+    desde, malo_desde = _fecha_param(datos.get("desde"))
+    hasta, malo_hasta = _fecha_param(datos.get("hasta"))
+    avisos = []
+    if malo_desde or malo_hasta:
+        avisos.append("Una de las fechas del filtro no es válida y no se usó. Elígela en el calendario.")
+    if desde and hasta and desde > hasta:
+        desde, hasta = hasta, desde
+        avisos.append("La fecha «desde» era posterior a «hasta»: se invirtieron.")
+    return {"moneda": moneda, "por": por, "por_texto": FILTRO_POR[por], "desde": desde, "hasta": hasta, "avisos": avisos}
+
+
+def _aplicar_filtro(registros, filtro):
+    registros = _filtrar_moneda(registros, filtro["moneda"])
+    desde, hasta = filtro["desde"], filtro["hasta"]
+    if filtro["por"] == "creada":
+        if desde:
+            registros = registros.filter(creada__date__gte=desde)
+        if hasta:
+            registros = registros.filter(creada__date__lte=hasta)
+    elif desde or hasta:
+        # Período conciliado: las que tienen al menos un día dentro del rango elegido.
+        registros = registros.annotate(inicio=Coalesce("desde", "hasta")).filter(hasta__isnull=False)
+        if desde:
+            registros = registros.filter(hasta__gte=desde)
+        if hasta:
+            registros = registros.filter(inicio__lte=hasta)
+    return registros
+
+
+def _consulta(filtro, **cambios):
+    """Parámetros del filtro para los enlaces (paginación, monedas, volver después de borrar)."""
+    valores = {**filtro, **cambios}
+    partes = {}
+    if valores.get("moneda"):
+        partes["moneda"] = valores["moneda"]
+    if valores.get("desde") or valores.get("hasta"):
+        partes["por"] = valores["por"]
+    if valores.get("desde"):
+        partes["desde"] = valores["desde"].isoformat()
+    if valores.get("hasta"):
+        partes["hasta"] = valores["hasta"].isoformat()
+    return urlencode(partes)
+
+
+def _atajos_fechas(filtro):
+    hoy = timezone.localdate()
+    inicio_mes = hoy.replace(day=1)
+    fin_mes_anterior = inicio_mes - timedelta(days=1)
+    rangos = [
+        ("Este mes", inicio_mes, hoy),
+        ("Mes anterior", fin_mes_anterior.replace(day=1), fin_mes_anterior),
+        ("Últimos 30 días", hoy - timedelta(days=29), hoy),
+        ("Últimos 3 meses", (inicio_mes - timedelta(days=62)).replace(day=1), hoy),
+    ]
+    return [
+        {"texto": texto, "consulta": _consulta(filtro, desde=desde, hasta=hasta),
+         "activo": filtro["desde"] == desde and filtro["hasta"] == hasta}
+        for texto, desde, hasta in rangos
+    ]
 
 
 def _ids(texto):
@@ -270,9 +374,11 @@ def _filtrar_moneda(registros, moneda):
     return registros
 
 
-def _volver_al_historial(moneda):
+def _volver_al_historial(datos):
+    """Vuelve al historial con el mismo filtro (moneda y fechas) que se estaba viendo."""
     url = reverse("conciliacion:historial")
-    return redirect(f"{url}?moneda={moneda}" if moneda in (Conciliacion.DOLARES, Conciliacion.PESOS) else url)
+    consulta = _consulta(_filtro_historial(datos))
+    return redirect(f"{url}?{consulta}" if consulta else url)
 
 
 def _lista_numeros(ids):
@@ -287,19 +393,23 @@ def _lista_numeros(ids):
 @solo_post("conciliacion:historial")
 def borrar_historial(request):
     """Primer paso: muestra lo que se va a borrar (las seleccionadas o todas) y pide confirmarlo."""
-    moneda = request.POST.get("moneda", "")
+    filtro = _filtro_historial(request.POST)
+    moneda = filtro["moneda"]
     if request.POST.get("todas"):
-        registros = _filtrar_moneda(Conciliacion.objects.all(), moneda)
+        registros = _aplicar_filtro(Conciliacion.objects.all(), filtro)
     else:
         registros = Conciliacion.objects.filter(pk__in=_ids(",".join(request.POST.getlist("ids"))))
     registros = registros.select_related("usuario").defer("resultado").order_by("-creada", "-pk")
     if not registros:
         messages.warning(request, "Selecciona al menos una conciliación para borrar.")
-        return _volver_al_historial(moneda)
+        return _volver_al_historial(request.POST)
     return render(request, "conciliacion/borrar_confirmar.html", {
         "registros": registros,
         "ids": ",".join(str(c.pk) for c in registros),
         "moneda": moneda,
+        "filtro": filtro,
+        "con_fechas": bool(filtro["desde"] or filtro["hasta"]),
+        "consulta": _consulta(filtro),
         "todas": bool(request.POST.get("todas")),
     })
 
@@ -309,14 +419,13 @@ def borrar_historial(request):
 @solo_post("conciliacion:historial")
 def borrar_confirmado(request):
     """Segundo paso: borra solo las conciliaciones confirmadas y comprueba que ya no estén."""
-    moneda = request.POST.get("moneda", "")
     ids = _ids(request.POST.get("ids"))
     if not ids:
         messages.warning(request, "No había conciliaciones seleccionadas. No se borró nada.")
-        return _volver_al_historial(moneda)
+        return _volver_al_historial(request.POST)
     if not request.POST.get("entiendo"):
         messages.error(request, "No se borró nada: marca la casilla de confirmación para borrar.")
-        return _volver_al_historial(moneda)
+        return _volver_al_historial(request.POST)
 
     existentes = set(Conciliacion.objects.filter(pk__in=ids).values_list("pk", flat=True))
     Conciliacion.objects.filter(pk__in=existentes).delete()  # sus Excel se borran en cascada
@@ -337,7 +446,7 @@ def borrar_confirmado(request):
     ya_no_estaban = set(ids) - existentes
     if ya_no_estaban:
         messages.info(request, f"Ya no estaban en el historial: {_lista_numeros(ya_no_estaban)}.")
-    return _volver_al_historial(moneda)
+    return _volver_al_historial(request.POST)
 
 
 @login_required

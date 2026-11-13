@@ -136,7 +136,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 WHITENOISE_USE_FINDERS = True
 
 # Versión visible en el pie de página y usada para refrescar CSS/JS en el navegador.
-APP_VERSION = "3.7.2"
+APP_VERSION = "3.8.0"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

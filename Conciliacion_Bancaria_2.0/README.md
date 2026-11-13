@@ -79,7 +79,7 @@ existían quedan como Administrador (si eran staff) o Analista de Tesorería.
 
 ## Cómo comprobar que estás viendo esta versión
 
-El pie de página dice **Conciliación bancaria v3.7.2**.
+El pie de página dice **Conciliación bancaria v3.8.0**.
 
 ## Al actualizar desde una versión anterior
 
@@ -128,8 +128,12 @@ Tus usuarios y el historial se mantienen.
   el monto por revisar por medio de pago o marca, el monto por revisar por día de venta y las
   ventas con más monto por revisar. Los totales se calculan al conciliar
   (`apps/conciliacion/graficos.py`) y se guardan con la conciliación; las conciliaciones
-  hechas antes de la v3.7.2 muestran lo que se puede armar con lo que guardaron.
+  hechas antes de la v3.8.0 muestran lo que se puede armar con lo que guardaron.
 - **Historial**: todas las conciliaciones guardadas, con su resultado y sus Excel.
+  Se filtra por moneda y por fechas: por **período conciliado** (las que tienen al menos un día
+  de ventas dentro del rango) o por **fecha en que se hizo**, con atajos (este mes, mes anterior,
+  últimos 30 días, últimos 3 meses). Arriba se resume cuántas son, cuántas cuadraron y el monto
+  por revisar de cada moneda. «Borrar todas» respeta el filtro.
   Para borrar, se marcan las casillas de las conciliaciones (o «Borrar todas», que respeta el
   filtro de moneda) y se confirma en una segunda pantalla que lista exactamente lo que se
   borrará, marcando «Entiendo que no se puede deshacer». Después del borrado se verifica que

@@ -106,7 +106,7 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 <a id="estado-actual" name="estado-actual"></a>
 ## 🚦 Estado Actual del Desarrollo
 
-La versión vigente del sistema es **Conciliación bancaria v3.7.2**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
+La versión vigente del sistema es **Conciliación bancaria v3.8.0**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
 
 #### Módulos Disponibles
 * **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**, en uno o varios archivos) contra los pagos con tarjeta del **BORDERO** por código de autorización y monto, con verificación del abono en la cartola de **BancoEstado** o **Banco de Chile**. Detecta diferencias de monto, ventas sin registro, ventas fuera del período, errores de digitación del código y datos duplicados. Reconoce las **ventas en cuotas**: cada venta se cruza una sola vez con el BORDERO y se informan las cuotas que no vienen en los reportes cargados, con el mes en que se esperaban, para volver a conciliar con un período más amplio. Al soltar los archivos muestra qué fechas de venta trae cada reporte de Transbank, y los **pagos del BORDERO sin abono** se limitan a esas fechas (crédito y débito por separado), indicando cuántos pagos de otras fechas se omitieron.

@@ -7,14 +7,15 @@ incluyen datos reales del hotel). Ejecutar con:
 """
 import io
 import struct
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.template import Context, Template
 from django.test import SimpleTestCase, TestCase, override_settings
-from django.utils import translation
+from django.utils import timezone, translation
 from openpyxl import Workbook, load_workbook
 
 from . import graficos, lectura, logica, logica_clp
@@ -1516,3 +1517,66 @@ class PantallaDeProgresoTests(TestCase):
         pagina = self.client.get("/conciliacion/pesos/")
         self.assertContains(pagina, "js/progreso.js")
         self.assertContains(pagina, 'data-progreso-pasos="Leyendo el BORDERO')
+
+
+class FiltroHistorialTests(TestCase):
+    def setUp(self):
+        self.client.force_login(User.objects.create_user("jefe", "jefe@hotel.cl", "Clave-Prueba-2026", is_staff=True))
+        crear = Conciliacion.objects.create
+        self.septiembre = crear(moneda=Conciliacion.PESOS, desde=date(2026, 9, 4), hasta=date(2026, 9, 7),
+                                monto_por_revisar=1000)
+        self.cruza_mes = crear(moneda=Conciliacion.PESOS, desde=date(2026, 9, 28), hasta=date(2026, 10, 3), cuadrado=True)
+        self.octubre = crear(moneda=Conciliacion.DOLARES, desde=date(2026, 10, 10), hasta=date(2026, 10, 12),
+                             monto_por_revisar=Decimal("12.5"))
+        self.un_dia = crear(moneda=Conciliacion.PESOS, desde=None, hasta=date(2026, 11, 2))
+        self.sin_periodo = crear(moneda=Conciliacion.PESOS)
+        Conciliacion.objects.filter(pk=self.octubre.pk).update(creada=timezone.make_aware(datetime(2026, 11, 5, 10)))
+
+    def numeros(self, **params):
+        respuesta = self.client.get("/conciliacion/historial/", params)
+        return sorted(c.pk for c in respuesta.context["pagina"].object_list)
+
+    def test_por_periodo_incluye_las_que_tienen_algun_dia_en_el_rango(self):
+        self.assertEqual(self.numeros(desde="2026-09-01", hasta="2026-09-30"), [self.septiembre.pk, self.cruza_mes.pk])
+        self.assertEqual(self.numeros(desde="2026-10-01", hasta="2026-10-31"), [self.cruza_mes.pk, self.octubre.pk])
+        self.assertEqual(self.numeros(desde="2026-11-01"), [self.un_dia.pk])  # solo con fecha de corte
+        self.assertEqual(self.numeros(hasta="2026-09-05"), [self.septiembre.pk])
+
+    def test_por_fecha_en_que_se_hizo(self):
+        self.assertEqual(self.numeros(por="creada", desde="2026-11-05", hasta="2026-11-05"), [self.octubre.pk])
+
+    def test_se_combina_con_la_moneda(self):
+        self.assertEqual(self.numeros(desde="2026-10-01", hasta="2026-10-31", moneda="CLP"), [self.cruza_mes.pk])
+
+    def test_fechas_invertidas_o_invalidas(self):
+        respuesta = self.client.get("/conciliacion/historial/", {"desde": "2026-09-30", "hasta": "2026-09-01"})
+        self.assertContains(respuesta, "se invirtieron")
+        self.assertEqual(sorted(c.pk for c in respuesta.context["pagina"].object_list), [self.septiembre.pk, self.cruza_mes.pk])
+        respuesta = self.client.get("/conciliacion/historial/", {"desde": "31-02-2026"})
+        self.assertContains(respuesta, "no es válida")
+        self.assertEqual(respuesta.context["total_filtro"], 5)
+
+    def test_resumen_y_enlaces_conservan_el_filtro(self):
+        pagina = self.client.get("/conciliacion/historial/", {"desde": "2026-09-01", "hasta": "2026-10-31"})
+        self.assertContains(pagina, "3 conciliaciones")
+        self.assertContains(pagina, "Pesos: 1 de 2 cuadradas · por revisar $ 1.000.")
+        self.assertContains(pagina, "Dólares: 0 de 1 cuadrada · por revisar US$ 12,50.")
+        self.assertContains(pagina, "por=periodo&amp;desde=2026-09-01&amp;hasta=2026-10-31&amp;moneda=USD")
+        self.assertContains(pagina, "Borrar todas las filtradas (3)")
+        self.assertContains(pagina, "Quitar fechas")
+
+    def test_borrar_todas_respeta_las_fechas(self):
+        filtro = {"todas": "1", "por": "periodo", "desde": "2026-09-01", "hasta": "2026-09-30"}
+        confirmar = self.client.post("/conciliacion/historial/borrar/", filtro)
+        self.assertContains(confirmar, "todas las del filtro")
+        self.assertEqual(sorted(c.pk for c in confirmar.context["registros"]), [self.septiembre.pk, self.cruza_mes.pk])
+        respuesta = self.client.post("/conciliacion/historial/borrar/confirmar/", {
+            "ids": confirmar.context["ids"], "entiendo": "1", "por": "periodo", "desde": "2026-09-01", "hasta": "2026-09-30",
+        })
+        self.assertRedirects(respuesta, "/conciliacion/historial/?por=periodo&desde=2026-09-01&hasta=2026-09-30",
+                             fetch_redirect_response=False)
+        self.assertEqual(Conciliacion.objects.count(), 3)
+
+    def test_sin_resultados(self):
+        self.assertContains(self.client.get("/conciliacion/historial/", {"desde": "2020-01-01", "hasta": "2020-01-31"}),
+                            "No hay conciliaciones con período conciliado en esas fechas")

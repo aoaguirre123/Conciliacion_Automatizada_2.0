@@ -17,12 +17,17 @@
     <form method="post" action="{% url 'conciliacion:borrar_historial' %}" id="form-borrar" class="acciones-historial" data-borrar>
         {% csrf_token %}
         <input type="hidden" name="moneda" value="{{ moneda }}">
+        {% if con_fechas %}
+        <input type="hidden" name="por" value="{{ filtro.por }}">
+        <input type="hidden" name="desde" value="{{ filtro.desde|date:'Y-m-d' }}">
+        <input type="hidden" name="hasta" value="{{ filtro.hasta|date:'Y-m-d' }}">
+        {% endif %}
         <button type="submit" class="boton boton--peligro" data-borrar-seleccionadas>
             <i data-lucide="trash-2" aria-hidden="true"></i>
             <span data-borrar-contador>Borrar seleccionadas</span>
         </button>
         <button type="submit" name="todas" value="1" class="boton boton--secundario">
-            Borrar todas{% if moneda == 'USD' %} las de dólares{% elif moneda == 'CLP' %} las de pesos{% endif %} ({{ total_filtro }})
+            Borrar todas{% if con_fechas %} las filtradas{% elif moneda == 'USD' %} las de dólares{% elif moneda == 'CLP' %} las de pesos{% endif %} ({{ total_filtro }})
         </button>
     </form>
     {% endif %}
@@ -30,11 +35,49 @@
 
 {% include "partials/mensajes.html" %}
 
-<div class="filtros" role="group" aria-label="Filtrar por moneda">
-    <a class="filtro{% if not moneda %} filtro--activo{% endif %}" href="{% url 'conciliacion:historial' %}"{% if not moneda %} aria-current="true"{% endif %}>Todas</a>
-    <a class="filtro{% if moneda == 'USD' %} filtro--activo{% endif %}" href="?moneda=USD"{% if moneda == 'USD' %} aria-current="true"{% endif %}>Dólares</a>
-    <a class="filtro{% if moneda == 'CLP' %} filtro--activo{% endif %}" href="?moneda=CLP"{% if moneda == 'CLP' %} aria-current="true"{% endif %}>Pesos</a>
-</div>
+<form method="get" class="tarjeta filtro-fechas" aria-label="Filtrar el historial">
+    <div class="filtro-fechas__fila">
+        <div class="filtros filtros--sin-margen" role="group" aria-label="Moneda">
+            <a class="filtro{% if not moneda %} filtro--activo{% endif %}" href="?{{ consulta_sin_moneda }}"{% if not moneda %} aria-current="true"{% endif %}>Todas</a>
+            <a class="filtro{% if moneda == 'USD' %} filtro--activo{% endif %}" href="?{% if consulta_sin_moneda %}{{ consulta_sin_moneda }}&amp;{% endif %}moneda=USD"{% if moneda == 'USD' %} aria-current="true"{% endif %}>Dólares</a>
+            <a class="filtro{% if moneda == 'CLP' %} filtro--activo{% endif %}" href="?{% if consulta_sin_moneda %}{{ consulta_sin_moneda }}&amp;{% endif %}moneda=CLP"{% if moneda == 'CLP' %} aria-current="true"{% endif %}>Pesos</a>
+        </div>
+        <div class="filtro-fechas__atajos" role="group" aria-label="Rangos rápidos">
+            {% for a in atajos %}<a class="filtro filtro--chico{% if a.activo %} filtro--activo{% endif %}" href="?{{ a.consulta }}"{% if a.activo %} aria-current="true"{% endif %}>{{ a.texto }}</a>{% endfor %}
+        </div>
+    </div>
+    {% if moneda %}<input type="hidden" name="moneda" value="{{ moneda }}">{% endif %}
+    <div class="filtro-fechas__campos">
+        <div class="campo">
+            <label class="campo__etiqueta" for="filtro-por">Buscar por</label>
+            <select class="entrada" id="filtro-por" name="por">
+                <option value="periodo"{% if filtro.por == 'periodo' %} selected{% endif %}>Período conciliado (fechas de las ventas)</option>
+                <option value="creada"{% if filtro.por == 'creada' %} selected{% endif %}>Fecha en que se hizo la conciliación</option>
+            </select>
+        </div>
+        <div class="campo">
+            <label class="campo__etiqueta" for="filtro-desde">Desde</label>
+            <input class="entrada" type="date" id="filtro-desde" name="desde" value="{{ filtro.desde|date:'Y-m-d' }}">
+        </div>
+        <div class="campo">
+            <label class="campo__etiqueta" for="filtro-hasta">Hasta</label>
+            <input class="entrada" type="date" id="filtro-hasta" name="hasta" value="{{ filtro.hasta|date:'Y-m-d' }}">
+        </div>
+        <div class="filtro-fechas__botones">
+            <button type="submit" class="boton boton--principal"><i data-lucide="filter" aria-hidden="true"></i> Filtrar</button>
+            {% if con_fechas %}<a class="boton boton--secundario" href="?{% if moneda %}moneda={{ moneda }}{% endif %}">Quitar fechas</a>{% endif %}
+        </div>
+    </div>
+    {% if con_fechas or moneda %}
+    <p class="filtro-fechas__resumen" role="status">
+        <strong>{{ total_filtro }} conciliaci{{ total_filtro|pluralize:"ón,ones" }}</strong>
+        {% if con_fechas %}con {% if filtro.por == 'periodo' %}período conciliado{% else %}fecha de conciliación{% endif %}
+            {% if filtro.desde and filtro.hasta %}entre el {{ filtro.desde|date:"d-m-Y" }} y el {{ filtro.hasta|date:"d-m-Y" }}{% elif filtro.desde %}desde el {{ filtro.desde|date:"d-m-Y" }}{% else %}hasta el {{ filtro.hasta|date:"d-m-Y" }}{% endif %}{% endif %}{% if moneda %} en {% if moneda == 'USD' %}dólares{% else %}pesos{% endif %}{% endif %}.
+        {% if totales_pesos %}<span>Pesos: {{ totales_pesos.cuadradas }} de {{ totales_pesos.cantidad }} cuadrada{{ totales_pesos.cantidad|pluralize }}{% if totales_pesos.por_revisar %} · por revisar $ {{ totales_pesos.por_revisar|floatformat:"0g" }}{% endif %}.</span>{% endif %}
+        {% if totales_dolares %}<span>Dólares: {{ totales_dolares.cuadradas }} de {{ totales_dolares.cantidad }} cuadrada{{ totales_dolares.cantidad|pluralize }}{% if totales_dolares.por_revisar %} · por revisar US$ {{ totales_dolares.por_revisar|floatformat:"2g" }}{% endif %}.</span>{% endif %}
+    </p>
+    {% endif %}
+</form>
 
 <article class="tarjeta tarjeta--tabla">
     {% if pagina.object_list %}
@@ -92,15 +135,20 @@
 
     {% if pagina.has_other_pages %}
     <nav class="paginacion" aria-label="Páginas">
-        {% if pagina.has_previous %}<a class="boton boton--secundario" href="?{% if moneda %}moneda={{ moneda }}&amp;{% endif %}pagina={{ pagina.previous_page_number }}">Anterior</a>{% endif %}
+        {% if pagina.has_previous %}<a class="boton boton--secundario" href="?{% if consulta %}{{ consulta }}&amp;{% endif %}pagina={{ pagina.previous_page_number }}">Anterior</a>{% endif %}
         <span>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
-        {% if pagina.has_next %}<a class="boton boton--secundario" href="?{% if moneda %}moneda={{ moneda }}&amp;{% endif %}pagina={{ pagina.next_page_number }}">Siguiente</a>{% endif %}
+        {% if pagina.has_next %}<a class="boton boton--secundario" href="?{% if consulta %}{{ consulta }}&amp;{% endif %}pagina={{ pagina.next_page_number }}">Siguiente</a>{% endif %}
     </nav>
     {% endif %}
     {% else %}
     <div class="vacio">
+        {% if con_fechas %}
+        <p>No hay conciliaciones {% if filtro.por == 'periodo' %}con período conciliado{% else %}hechas{% endif %} en esas fechas{% if moneda %} en {% if moneda == 'USD' %}dólares{% else %}pesos{% endif %}{% endif %}.</p>
+        <p><a href="?{% if moneda %}moneda={{ moneda }}{% endif %}">Ver todas</a> o prueba con otro rango.</p>
+        {% else %}
         <p>Todavía no hay conciliaciones{% if moneda %} en {% if moneda == 'USD' %}dólares{% else %}pesos{% endif %}{% endif %}.</p>
-        {% if puede_conciliar %}<p><a href="{% url 'conciliacion:dolares' %}">Conciliar en dólares</a> o <a href="{% url 'conciliacion:pesos' %}">conciliar en pesos</a>.</p>{% endif %}
+        {% endif %}
+        {% if puede_conciliar and not con_fechas %}<p><a href="{% url 'conciliacion:dolares' %}">Conciliar en dólares</a> o <a href="{% url 'conciliacion:pesos' %}">conciliar en pesos</a>.</p>{% endif %}
     </div>
     {% endif %}
 </article>

@@ -13,7 +13,7 @@
 <div class="aviso aviso--error aviso--separado" role="alert">
     <i data-lucide="triangle-alert" aria-hidden="true"></i>
     <div>
-        <strong>Se borrará{{ registros|length|pluralize:"n" }} {{ registros|length }} conciliaci{{ registros|length|pluralize:"ón,ones" }}{% if todas %}: {% if moneda == 'USD' %}todas las de dólares{% elif moneda == 'CLP' %}todas las de pesos{% else %}todo el historial{% endif %}{% endif %}</strong>
+        <strong>Se borrará{{ registros|length|pluralize:"n" }} {{ registros|length }} conciliaci{{ registros|length|pluralize:"ón,ones" }}{% if todas %}: {% if con_fechas %}todas las del filtro ({% if filtro.por == 'periodo' %}período conciliado{% else %}fecha de conciliación{% endif %} {% if filtro.desde %}desde el {{ filtro.desde|date:"d-m-Y" }}{% endif %}{% if filtro.desde and filtro.hasta %} {% endif %}{% if filtro.hasta %}hasta el {{ filtro.hasta|date:"d-m-Y" }}{% endif %}{% if moneda %}, {% if moneda == 'USD' %}dólares{% else %}pesos{% endif %}{% endif %}){% elif moneda == 'USD' %}todas las de dólares{% elif moneda == 'CLP' %}todas las de pesos{% else %}todo el historial{% endif %}{% endif %}</strong>
         <p>También se borran sus reportes Excel guardados. Esta acción no se puede deshacer.</p>
     </div>
 </div>
@@ -54,12 +54,17 @@
     {% csrf_token %}
     <input type="hidden" name="ids" value="{{ ids }}">
     <input type="hidden" name="moneda" value="{{ moneda }}">
+    {% if con_fechas %}
+    <input type="hidden" name="por" value="{{ filtro.por }}">
+    <input type="hidden" name="desde" value="{{ filtro.desde|date:'Y-m-d' }}">
+    <input type="hidden" name="hasta" value="{{ filtro.hasta|date:'Y-m-d' }}">
+    {% endif %}
     <label class="casilla">
         <input type="checkbox" name="entiendo" value="1" required data-entiendo>
         <span>Entiendo que se borrará{{ registros|length|pluralize:"n" }} {{ registros|length }} conciliaci{{ registros|length|pluralize:"ón,ones" }} y que no se puede deshacer.</span>
     </label>
     <div class="confirmar-borrado__botones">
-        <a class="boton boton--secundario" href="{% url 'conciliacion:historial' %}{% if moneda %}?moneda={{ moneda }}{% endif %}">Cancelar</a>
+        <a class="boton boton--secundario" href="{% url 'conciliacion:historial' %}{% if consulta %}?{{ consulta }}{% endif %}">Cancelar</a>
         <button type="submit" class="boton boton--peligro-lleno">
             <i data-lucide="trash-2" aria-hidden="true"></i> Borrar definitivamente
         </button>

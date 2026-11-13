@@ -3664,3 +3664,90 @@ details[open] > summary .plegable__mas svg {
         transition: none;
     }
 }
+
+/* Historial: filtro por moneda y por fechas */
+.filtro-fechas {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.filtro-fechas__fila {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    justify-content: space-between;
+}
+
+.filtros--sin-margen {
+    margin-bottom: 0;
+}
+
+.filtro-fechas__atajos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.filtro--chico {
+    font-size: var(--t-xs);
+    padding: 0.25rem 0.75rem;
+}
+
+.filtro-fechas__campos {
+    align-items: end;
+    display: grid;
+    gap: 0.75rem 1rem;
+    grid-template-columns: minmax(14rem, 1.6fr) minmax(9rem, 1fr) minmax(9rem, 1fr) auto;
+}
+
+.filtro-fechas__botones {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.filtro-fechas__botones .boton {
+    min-height: 44px;
+}
+
+.filtro-fechas__resumen {
+    border-top: 1px solid var(--linea);
+    color: var(--tinta-media);
+    display: flex;
+    flex-wrap: wrap;
+    font-size: var(--t-sm);
+    font-weight: 400;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+    padding-top: 0.75rem;
+}
+
+.filtro-fechas__resumen strong {
+    color: var(--tinta);
+}
+
+:root[data-tema="oscuro"] .filtro-fechas input[type="date"] {
+    color-scheme: dark;
+}
+
+@media (max-width: 900px) {
+    .filtro-fechas__campos {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .filtro-fechas__campos .campo:first-child,
+    .filtro-fechas__botones {
+        grid-column: 1 / -1;
+    }
+}
+
+.filtro-fechas input[type="date"] {
+    min-width: 0;
+}
+
+@media (max-width: 480px) {
+    .filtro-fechas__campos {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
