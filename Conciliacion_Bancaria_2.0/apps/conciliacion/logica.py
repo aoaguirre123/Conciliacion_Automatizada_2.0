@@ -31,7 +31,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
-from . import lectura, logica_clp
+from . import graficos, lectura, logica_clp
 from .bines import identificar_local
 from .parametros import Parametros
 
@@ -57,6 +57,7 @@ COLS_MONTOS = ("Unnamed: 12", "Unnamed: 13", "Unnamed: 14")  # otra moneda, sald
 
 NOMBRES_TARJETA = ["Amex US$", "Dinners US$", "Master Card US$", "Visa US$"]
 CODIGO_A_NOMBRE = {"AX": "Amex US$", "DI": "Dinners US$", "MC": "Master Card US$", "VI": "Visa US$"}
+MARCA_GRAFICO = {"VI": "Visa", "MC": "Mastercard", "AX": "American Express", "DI": "Diners"}
 
 # campo del formulario -> nombre visible
 NOMBRES_ARCHIVO = {
@@ -859,6 +860,9 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
             _, resultado["resumen"]["erp_repetidos"], resultado["resumen"]["filas_erp_repetidas"] = lector._tablas["erp"]
         resultado["archivos_usados"] = [NOMBRES_ARCHIVO[c] for c, a in archivos.items() if a]
         resultado["periodo"] = _periodo(archivos, lector, identificar)
+        resultado["graficos"] = graficos.datos_usd(
+            informacion_proceso, MARCA_GRAFICO.get, _num, logica_clp._fecha
+        )
 
         reportes = [
             ("ubicadas", "Transacciones ubicadas", "Abonadas y sus diferencias contra cada cartola.",

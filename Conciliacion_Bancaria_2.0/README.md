@@ -64,12 +64,22 @@ base de datos.
 `db.sqlite3` es la base del proyecto anterior, así que los usuarios existentes siguen
 funcionando. El login pide **correo**, por lo que cada usuario debe tener un correo cargado.
 
-Para crear un usuario nuevo: `python manage.py createsuperuser`, o desde
-"Usuarios y permisos" en el menú (solo usuarios staff).
+Cada cuenta tiene uno de tres perfiles (`apps/usuarios/perfiles.py`):
+
+- **Administrador**: concilia (también con los archivos de ejemplo), consulta, borra del
+  historial y administra la configuración y los usuarios.
+- **Analista de Tesorería**: concilia en pesos y dólares, y consulta el historial.
+- **Contador / Auditor**: solo consulta el historial y el detalle, y descarga los reportes.
+
+Los usuarios se crean y editan en **Administración › Usuarios** (solo administradores). El
+primer administrador se crea con `python manage.py createsuperuser`; un superusuario siempre
+es Administrador y en pantalla aparece como «Superusuario». Solo un superusuario puede crear administradores, cambiarles el perfil o la
+contraseña, o desactivarlos; los demás administradores gestionan Analistas y Contadores. Al aplicar la migración `usuarios.0001_perfiles`, las cuentas que ya
+existían quedan como Administrador (si eran staff) o Analista de Tesorería.
 
 ## Cómo comprobar que estás viendo esta versión
 
-El pie de página dice **Conciliación bancaria v3.4.2**.
+El pie de página dice **Conciliación bancaria v3.7.2**.
 
 ## Al actualizar desde una versión anterior
 
@@ -109,12 +119,22 @@ Tus usuarios y el historial se mantienen.
   contra las fechas de crédito; Redcompra contra las de débito y prepago. Los de otras fechas
   solo se cuentan, porque su abono viene en reportes de otros días. El cruce sigue usando
   todo el BORDERO.
+- **Al analizar** (en pesos, en dólares y con los archivos de ejemplo) se abre una pantalla de
+  progreso: la subida de los archivos muestra su avance real y el análisis en el servidor avanza
+  por etapas, con el tiempo transcurrido (`static/js/progreso.js`). Si el servidor no responde o
+  la sesión terminó, lo dice y permite volver a intentar.
+- **Dónde mirar primero** (en el resultado de cada conciliación y en su detalle del historial):
+  frases que dicen por dónde empezar y gráficos de cómo quedaron las ventas (barra por estado),
+  el monto por revisar por medio de pago o marca, el monto por revisar por día de venta y las
+  ventas con más monto por revisar. Los totales se calculan al conciliar
+  (`apps/conciliacion/graficos.py`) y se guardan con la conciliación; las conciliaciones
+  hechas antes de la v3.7.2 muestran lo que se puede armar con lo que guardaron.
 - **Historial**: todas las conciliaciones guardadas, con su resultado y sus Excel.
   Para borrar, se marcan las casillas de las conciliaciones (o «Borrar todas», que respeta el
   filtro de moneda) y se confirma en una segunda pantalla que lista exactamente lo que se
   borrará, marcando «Entiendo que no se puede deshacer». Después del borrado se verifica que
   ya no estén y se informa cuáles se borraron.
-- **Configuración** (solo usuarios staff, en el menú «Administración»): tolerancia de montos
+- **Configuración** (solo administradores, en el menú «Administración»): tolerancia de montos
   en pesos ($0 a $1.000; por defecto $10) y en dólares (US$ 0 a 5; por defecto US$ 0,10),
   ventana de días entre la venta y el pago (0 a 15; por defecto 3) y palabras clave que
   identifican en la glosa de la cartola un abono de Transbank (por defecto «transbank, tbk»).
@@ -132,7 +152,8 @@ y una migración nueva que la vuelva a cargar.
 ## Modo noche
 
 El interruptor «Modo noche» de la cabecera cambia los colores de toda la aplicación. La
-preferencia se guarda en el navegador; si nunca se ha elegido, se usa la del sistema operativo.
+preferencia se guarda en el navegador; si nunca se ha elegido, se usa el modo día. El
+interruptor también está en la pantalla de inicio de sesión.
 Los colores están en `static/css/app.css`: el bloque `:root` (modo día) y
 `:root[data-tema="oscuro"]` (modo noche) definen las mismas variables.
 
@@ -179,7 +200,7 @@ Usan archivos sintéticos generados en memoria; no se guardan datos reales del h
 ```
 config/                 configuración de Django (formatos/es_CL: miles con punto)
 apps/core/              inicio
-apps/usuarios/          login y cierre de sesión
+apps/usuarios/          login, perfiles (perfiles.py) y administración de usuarios
 apps/conciliacion/
     logica.py           conciliación en dólares y sus Excel
     logica_clp.py       conciliación en pesos contra el BORDERO y sus Excel

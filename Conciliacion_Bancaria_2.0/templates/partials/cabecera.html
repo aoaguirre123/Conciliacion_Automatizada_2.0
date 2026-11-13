@@ -24,7 +24,7 @@
             <span class="usuario__inicial" aria-hidden="true">{{ user.first_name|default:user.username|slice:":1"|upper }}</span>
             <span class="usuario__datos">
                 <span class="usuario__nombre">{{ user.get_full_name|default:user.username }}</span>
-                {% if user.email %}<span class="usuario__correo">{{ user.email }}</span>{% endif %}
+                {% if etiqueta_perfil %}<span class="usuario__correo">{{ etiqueta_perfil }}</span>{% endif %}
             </span>
         </div>
         <form action="{% url 'usuarios:logout' %}" method="post">

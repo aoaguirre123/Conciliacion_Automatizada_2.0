@@ -114,6 +114,8 @@
     </div>
     {% endif %}
 
+    {% include "conciliacion/_graficos.html" %}
+
     <article class="tarjeta">
         <div class="tarjeta__cabeza">
             <h2>Transbank vs. cartolas de tarjetas (US$)</h2>
@@ -122,12 +124,17 @@
         {% include "conciliacion/_tabla.html" with filas=data_dolar formato="2g" %}
     </article>
 
-    <article class="tarjeta">
-        <div class="tarjeta__cabeza">
-            <h2>ERP vs. Transbank</h2>
-            <p class="tarjeta__bajada">En pesos. Ventas CM son los montos del ERP ubicados en la cartola de cada tarjeta, de todo el período. Ventas TBK son los montos del ERP vinculados a las ventas de este abono. Por eso no tienen que coincidir.</p>
+    <details class="tarjeta seccion-plegable">
+        <summary class="seccion-plegable__cabeza">
+            <span class="seccion-plegable__textos">
+                <h2>ERP vs. Transbank</h2>
+                <span class="tarjeta__bajada">En pesos. Ventas CM son los montos del ERP ubicados en la cartola de cada tarjeta, de todo el período. Ventas TBK son los montos del ERP vinculados a las ventas de este abono. Por eso no tienen que coincidir.</span>
+            </span>
+            <span class="seccion-plegable__accion" aria-hidden="true"><span class="seccion-plegable__ver">Ver</span><span class="seccion-plegable__ocultar">Ocultar</span><i data-lucide="chevron-down"></i></span>
+        </summary>
+        <div class="seccion-plegable__cuerpo">
+            {% include "conciliacion/_tabla.html" with filas=data formato="g" %}
         </div>
-        {% include "conciliacion/_tabla.html" with filas=data formato="g" %}
-    </article>
+    </details>
 
 </section>

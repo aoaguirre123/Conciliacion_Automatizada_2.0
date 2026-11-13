@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block titulo %}{% if nuevo %}Nuevo usuario{% else %}Editar usuario{% endif %}{% endblock %}
+
+{% block contenido %}
+<nav class="migas" aria-label="Ruta">
+    <a href="{% url 'usuarios:lista' %}">Usuarios</a>
+    <span aria-hidden="true">/</span>
+    <span>{% if nuevo %}Nuevo usuario{% else %}{{ editado.get_full_name|default:editado.username }}{% endif %}</span>
+</nav>
+
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>{% if nuevo %}Nuevo usuario{% else %}Editar usuario{% endif %}</h1>
+        <p class="encabezado__bajada">{% if nuevo %}La persona iniciará sesión con su correo y la contraseña que definas aquí.{% else %}Cambia sus datos, su perfil o su contraseña.{% endif %}</p>
+    </div>
+</header>
+
+{% include "partials/mensajes.html" %}
+
+{% if formulario.errors %}
+<div class="aviso aviso--error aviso--separado" role="alert">
+    <i data-lucide="circle-alert" aria-hidden="true"></i>
+    <div>
+        <strong>{% if nuevo %}No se creó el usuario{% else %}No se guardaron los cambios{% endif %}</strong>
+        {% for error in formulario.non_field_errors %}<p>{{ error }}</p>{% empty %}<p>Revisa los campos marcados.</p>{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<form method="post" class="flujo" id="form-usuario" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="datos">
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true"><i data-lucide="user-round" aria-hidden="true"></i></span>
+            <div>
+                <h2>Datos de la persona</h2>
+                <p class="tarjeta__bajada">El correo es con el que inicia sesión.</p>
+            </div>
+        </div>
+        <div class="configuracion">
+            {% include "conciliacion/_campo_config.html" with campo=formulario.first_name %}
+            {% include "conciliacion/_campo_config.html" with campo=formulario.last_name %}
+            {% include "conciliacion/_campo_config.html" with campo=formulario.email ayuda="Por ejemplo nombre@hotel.cl. No puede repetirse." %}
+        </div>
+    </article>
+
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true"><i data-lucide="id-card" aria-hidden="true"></i></span>
+            <div>
+                <h2>Perfil</h2>
+                <p class="tarjeta__bajada">Define qué puede hacer en la aplicación.</p>
+            </div>
+        </div>
+        <fieldset class="perfiles-opciones{% if formulario.perfil.errors %} perfiles-opciones--error{% endif %}"{% if formulario.perfil.field.disabled %} disabled{% endif %}>
+            <legend class="oculto">Perfil</legend>
+            {% for o in opciones_perfil %}
+            <label class="perfil-opcion" for="{{ o.opcion.id_for_label }}">
+                {{ o.opcion.tag }}
+                <span class="perfil-opcion__icono" aria-hidden="true"><i data-lucide="{{ o.icono }}"></i></span>
+                <span class="perfil-opcion__texto">
+                    <strong>{{ o.opcion.choice_label }}</strong>
+                    <span>{{ o.descripcion }}</span>
+                </span>
+                <span class="perfil-opcion__marca" aria-hidden="true"><i data-lucide="check"></i></span>
+            </label>
+            {% endfor %}
+        </fieldset>
+        {% for error in formulario.perfil.errors %}<p class="campo__mensaje" role="alert">{{ error }}</p>{% endfor %}
+        {% if editado.is_superuser %}
+        <p class="campo__ayuda separado-arriba-chico">Esta cuenta es Superusuario: tiene todos los permisos de Administrador y además es la única que crea y modifica administradores.</p>
+        {% elif formulario.administrador_protegido %}
+        <p class="campo__ayuda separado-arriba-chico">Solo el superusuario puede cambiar el perfil de un administrador{% if not uno_mismo %}, desactivarlo o cambiar su contraseña{% endif %}.</p>
+        {% elif uno_mismo %}
+        <p class="campo__ayuda separado-arriba-chico">Es tu propia cuenta: no puedes quitarte el perfil de administrador.</p>
+        {% elif not formulario.maneja_administradores %}
+        <p class="campo__ayuda separado-arriba-chico">El perfil Administrador solo lo asigna el superusuario.</p>
+        {% endif %}
+    </article>
+
+    {% if nuevo %}
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true"><i data-lucide="key-round" aria-hidden="true"></i></span>
+            <div>
+                <h2>Contraseña inicial</h2>
+                <p class="tarjeta__bajada">Entrégasela a la persona por un medio seguro.</p>
+            </div>
+        </div>
+        <div class="configuracion">
+            {% include "conciliacion/_campo_config.html" with campo=formulario.clave ayuda="Mínimo 8 caracteres. No puede ser solo números, muy común ni parecida al nombre o correo." %}
+            {% include "conciliacion/_campo_config.html" with campo=formulario.clave_repetida %}
+        </div>
+    </article>
+    {% else %}
+    <article class="tarjeta">
+        <div class="tarjeta__cabeza tarjeta__titulo">
+            <span class="paso" aria-hidden="true"><i data-lucide="power" aria-hidden="true"></i></span>
+            <div>
+                <h2>Acceso</h2>
+                <p class="tarjeta__bajada">Una cuenta desactivada no puede iniciar sesión. Sus conciliaciones se conservan en el historial.</p>
+            </div>
+        </div>
+        <label class="interruptor-campo{% if formulario.is_active.errors %} interruptor-campo--error{% endif %}{% if formulario.is_active.field.disabled %} interruptor-campo--bloqueado{% endif %}">
+            {{ formulario.is_active }}
+            <span>Cuenta activa</span>
+        </label>
+        {% for error in formulario.is_active.errors %}<p class="campo__mensaje" role="alert">{{ error }}</p>{% endfor %}
+    </article>
+    {% endif %}
+</form>
+
+<div class="configuracion__pie">
+    <p class="configuracion__estado">
+        {% if editado %}Cuenta creada el {{ editado.date_joined|date:"d-m-Y" }}. {% if editado.last_login %}Último ingreso: {{ editado.last_login|date:"d-m-Y H:i" }}.{% else %}Todavía no ha iniciado sesión.{% endif %}{% endif %}
+    </p>
+    <div class="configuracion__botones">
+        <a class="boton boton--secundario" href="{% url 'usuarios:lista' %}">Cancelar</a>
+        <button type="submit" form="form-usuario" class="boton boton--principal">
+            <i data-lucide="{% if nuevo %}user-plus{% else %}save{% endif %}" aria-hidden="true"></i>
+            {% if nuevo %}Crear usuario{% else %}Guardar cambios{% endif %}
+        </button>
+    </div>
+</div>
+
+{% if clave %}
+<form method="post" class="tarjeta separado-arriba" id="form-clave" novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="accion" value="clave">
+    <div class="tarjeta__cabeza tarjeta__titulo">
+        <span class="paso" aria-hidden="true"><i data-lucide="key-round" aria-hidden="true"></i></span>
+        <div>
+            <h2>Cambiar contraseña</h2>
+            <p class="tarjeta__bajada">{% if uno_mismo %}Tu sesión seguirá abierta.{% else %}La nueva contraseña rige desde su próximo ingreso.{% endif %}</p>
+        </div>
+    </div>
+    <div class="configuracion">
+        {% include "conciliacion/_campo_config.html" with campo=clave.clave ayuda="Mínimo 8 caracteres. No puede ser solo números, muy común ni parecida al nombre o correo." %}
+        {% include "conciliacion/_campo_config.html" with campo=clave.clave_repetida %}
+    </div>
+    <div class="configuracion__botones configuracion__botones--fin">
+        <button type="submit" class="boton boton--secundario">
+            <i data-lucide="key-round" aria-hidden="true"></i> Cambiar contraseña
+        </button>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

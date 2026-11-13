@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
+{% load static %}
+
 {% block titulo %}Conciliación N° {{ conciliacion.pk }}{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/graficos.js' %}?v={{ APP_VERSION }}" defer></script>
+{% endblock %}
 
 {% block contenido %}
 <nav class="migas" aria-label="Ruta">
@@ -28,21 +34,29 @@
         </p>
         {% endif %}
     </div>
+    {% if puede_conciliar %}
     <a class="boton boton--secundario" href="{% if conciliacion.moneda == 'CLP' %}{% url 'conciliacion:pesos' %}{% else %}{% url 'conciliacion:dolares' %}{% endif %}">
         <i data-lucide="plus" aria-hidden="true"></i> Nueva conciliación
     </a>
+    {% endif %}
 </header>
 
 {% include "partials/mensajes.html" %}
 
-<article class="tarjeta tarjeta--compacta archivos-usados">
-    <h2>Archivos analizados</h2>
-    <ul>
+<details class="tarjeta tarjeta--compacta seccion-plegable archivos-usados">
+        <summary class="seccion-plegable__cabeza">
+            <span class="seccion-plegable__textos">
+                <h2>Archivos analizados</h2>
+                <span class="tarjeta__bajada">{{ conciliacion.archivos|length }} archivo{{ conciliacion.archivos|length|pluralize }}: {% for a in conciliacion.archivos %}{{ a.etiqueta }}{% if not forloop.last %}, {% endif %}{% endfor %}.</span>
+            </span>
+            <span class="seccion-plegable__accion" aria-hidden="true"><span class="seccion-plegable__ver">Ver</span><span class="seccion-plegable__ocultar">Ocultar</span><i data-lucide="chevron-down"></i></span>
+        </summary>
+    <ul class="seccion-plegable__cuerpo">
         {% for a in conciliacion.archivos %}
         <li><strong>{{ a.etiqueta }}</strong> <span>{{ a.nombre }} ({{ a.tamano|filesizeformat }})</span></li>
         {% endfor %}
     </ul>
-</article>
+</details>
 
 {% if conciliacion.moneda == "CLP" %}
     {% include "conciliacion/_resultado_clp.html" %}

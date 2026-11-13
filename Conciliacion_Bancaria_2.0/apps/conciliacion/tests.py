@@ -17,7 +17,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import translation
 from openpyxl import Workbook, load_workbook
 
-from . import lectura, logica, logica_clp
+from . import graficos, lectura, logica, logica_clp
 from .models import Conciliacion, Configuracion
 from .parametros import Parametros
 
@@ -871,7 +871,8 @@ class AtajosTests(TestCase):
     """Botones «Conciliar con archivos de ejemplo» y «Borrar historial» de las páginas previas."""
 
     def setUp(self):
-        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026")
+        # Los ejemplos son solo para administradores (staff sin perfil asignado = Administrador).
+        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026", is_staff=True)
         self.client.force_login(self.usuario)
 
     def _carpeta_ejemplos(self, archivos_por_carpeta):
@@ -1293,7 +1294,8 @@ class PaginasDeErrorTests(TestCase):
 
 class BorrarHistorialTests(TestCase):
     def setUp(self):
-        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026")
+        # Borrar del historial es solo para administradores (staff sin perfil asignado = Administrador).
+        self.usuario = User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026", is_staff=True)
         self.client.force_login(self.usuario)
         self.pesos = [Conciliacion.objects.create(moneda=Conciliacion.PESOS) for _ in range(3)]
         self.dolares = Conciliacion.objects.create(moneda=Conciliacion.DOLARES)
@@ -1348,3 +1350,169 @@ class BorrarHistorialTests(TestCase):
         for url in ("/conciliacion/historial/borrar/", "/conciliacion/historial/borrar/confirmar/"):
             self.assertRedirects(self.client.get(url), "/conciliacion/historial/")
         self.assertEqual(Conciliacion.objects.count(), 4)
+
+
+# ---------------------------------------------------------------------------
+# Resumen gráfico de cada conciliación
+# ---------------------------------------------------------------------------
+class GraficosTests(SimpleTestCase):
+    def datos_clp(self, ventas):
+        return logica_clp.procesar({"bordero": bordero_clp(PAGOS_MIXTOS), "transbank": [transbank("tbk.xlsx", ventas)]})[0]
+
+    def test_la_conciliacion_guarda_los_totales_para_los_graficos(self):
+        r = self.datos_clp(VENTAS_MIXTAS)
+        g = r["graficos"]
+        self.assertEqual(g["estados"]["conciliado"][0], 4)
+        self.assertEqual({m["nombre"] for m in g["medios"]}, {"Crédito", "Débito", "Prepago"})
+        self.assertEqual(sum(d["ventas"] for d in g["dias"]), 4)
+        self.assertEqual(g["mayores"], [])
+        vista = graficos.preparar(r, "CLP")
+        self.assertEqual(vista["total_ventas"], 4)
+        self.assertEqual(vista["medios"], [])  # nada por revisar: no hay barras
+        self.assertIn("No hay montos por revisar", vista["hallazgos"][0])
+
+    def test_frases_y_barras_con_casos_por_revisar(self):
+        datos = {
+            "version": 1,
+            "estados": {"conciliado": [8, 80000], "diferencia": [1, 10000], "sin_registro": [3, 30000]},
+            "medios": [
+                {"nombre": "Crédito", "ventas": 6, "monto": 60000, "revisar_n": 3, "revisar_monto": 30000},
+                {"nombre": "Débito", "ventas": 6, "monto": 60000, "revisar_n": 1, "revisar_monto": 500},
+            ],
+            "dias": [
+                {"fecha": "2026-09-04", "ventas": 6, "monto": 60000, "revisar_n": 0, "revisar_monto": 0},
+                {"fecha": "2026-09-05", "ventas": 6, "monto": 60000, "revisar_n": 4, "revisar_monto": 30500},
+            ],
+            "mayores": [{"fecha": "05-09-2026", "medio": "Crédito", "codigo": "A1", "monto": 10000,
+                         "por_revisar": 10000, "estado": "sin_registro"}],
+        }
+        vista = graficos.preparar({"graficos": datos}, "CLP")
+        self.assertEqual([e["clave"] for e in vista["estados"]], ["conciliado", "diferencia", "sin_registro"])
+        self.assertEqual(vista["medios"][0]["nombre"], "Crédito")
+        self.assertEqual(vista["medios"][0]["ancho"], 100)
+        self.assertTrue(vista["dias"][0]["limpio"])
+        self.assertTrue(vista["dias"][1]["pico"])
+        self.assertEqual(vista["mayores"][0]["revisar_texto"], "$ 10.000")
+        frases = " ".join(vista["hallazgos"])
+        self.assertIn("«sin registro en el BORDERO» (3)", frases)
+        self.assertIn("Crédito concentra el 98% del monto por revisar ($ 30.000)", frases)
+        self.assertIn("05-09-2026", frases)
+
+    def test_muchas_ventas_fuera_del_periodo_se_avisan(self):
+        datos = {"version": 1, "estados": {"conciliado": [5, 5000], "fuera_periodo": [5, 5000]},
+                 "medios": [], "dias": [], "mayores": []}
+        vista = graficos.preparar({"graficos": datos}, "CLP")
+        self.assertIn("5 ventas (50%) son de fechas que el BORDERO cargado no cubre", " ".join(vista["hallazgos"]))
+
+    def test_conciliacion_antigua_sin_graficos_usa_lo_guardado(self):
+        r = self.datos_clp(VENTAS_MIXTAS)
+        del r["graficos"]
+        vista = graficos.preparar(r, "CLP")
+        self.assertTrue(vista["sin_detalle"])
+        self.assertEqual(vista["total_ventas"], 4)
+
+    def test_dolares_en_formato_chileno(self):
+        datos = {"version": 1, "estados": {"conciliada": [1, 10], "diferencia": [1, 1234.5]},
+                 "medios": [{"nombre": "Visa", "ventas": 2, "monto": 1244.5, "revisar_n": 1, "revisar_monto": 1234.5}],
+                 "dias": [], "mayores": []}
+        vista = graficos.preparar({"graficos": datos}, "USD")
+        self.assertEqual(vista["medios"][0]["revisar_texto"], "US$ 1.234,50")
+        self.assertEqual(vista["nombre_medio"], "marca")
+
+    def test_sin_ventas_no_hay_graficos(self):
+        self.assertIsNone(graficos.preparar({"graficos": {"estados": {}, "medios": [], "dias": [], "mayores": []}}, "CLP"))
+
+
+class GraficosPantallaTests(TestCase):
+    def setUp(self):
+        self.client.force_login(User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026"))
+
+    def test_el_detalle_muestra_el_resumen_grafico(self):
+        resultado = logica_clp.procesar({"bordero": bordero_clp(PAGOS_MIXTOS), "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS)]})[0]
+        from .registro import _a_json
+        c = Conciliacion.objects.create(moneda=Conciliacion.PESOS, resultado=_a_json(resultado))
+        pagina = self.client.get(f"/conciliacion/historial/{c.pk}/")
+        self.assertContains(pagina, "Dónde mirar primero")
+        self.assertContains(pagina, "Cómo quedaron las 4 ventas de Transbank")
+        self.assertContains(pagina, "flex-grow: 4")  # sin coma decimal en los estilos
+        self.assertContains(pagina, "js/graficos.js")
+
+
+class ConciliadasConObservacionTests(TestCase):
+    """Verde: conciliada con el mismo código (aunque tenga redondeo). Amarillo: código distinto o cruce por monto y fecha."""
+
+    def cruzar(self, codigo_pago, monto_pago=10000):
+        venta = {"codigo": "3538", "codigo_flex": "3538", "monto": 10000, "fecha": date(2026, 10, 29)}
+        pago = {"codigo": codigo_pago, "codigo_flex": logica_clp._codigo_flexible(codigo_pago), "documento": codigo_pago,
+                "monto": monto_pago, "fecha": date(2026, 10, 29), "cod": "RCO", "cuenta": "1"}
+        logica_clp._cruzar([venta], [pago], (date(2026, 10, 1), date(2026, 10, 31)), 10, 3)
+        return venta
+
+    def test_redondeo_con_el_mismo_codigo_no_es_observacion(self):
+        venta = self.cruzar("3538", 9995)
+        self.assertEqual(venta["estado"], "conciliado")
+        self.assertIn("Diferencia de redondeo", venta["nota"])
+        self.assertFalse(logica_clp.con_observacion(venta))
+
+    def test_cruce_por_monto_y_fecha_es_observacion(self):
+        venta = self.cruzar("777777")
+        self.assertIn("Cruzado por monto y fecha", venta["nota"])
+        self.assertTrue(logica_clp.con_observacion(venta))
+
+    def test_colores_en_la_tabla_de_ventas_por_revisar(self):
+        self.client.force_login(User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026"))
+        base = {"medio": "Débito", "fecha": "04-09-2026", "local": "", "autorizacion": "1", "tarjeta": "", "marca": "Visa",
+                "banco": "", "pais": "", "monto": 1000, "monto_bordero": 1000, "diferencia": 0, "documento_bordero": "",
+                "documento_distinto": False, "estado": "conciliado", "estado_texto": "Conciliado"}
+        resultado = {"resumen": {"conciliadas": 2}, "observaciones": [
+            {**base, "nota": "Diferencia de redondeo"},
+            {**base, "nota": "Cruzado por monto y fecha: revisar código"},
+        ]}
+        c = Conciliacion.objects.create(moneda=Conciliacion.PESOS, resultado=resultado)
+        pagina = self.client.get(f"/conciliacion/historial/{c.pk}/").content.decode()
+        # Guardada antes de la v3.6.3: la de redondeo pasa al desplegable de diferencias aceptadas.
+        self.assertEqual(pagina.count('<span class="etiqueta etiqueta--aviso">Conciliado con observación</span>'), 1)
+        self.assertIn("1 venta con el mismo código y una diferencia aceptada", pagina)
+
+    def test_con_tolerancia_alta_las_diferencias_chicas_no_quedan_por_revisar(self):
+        ventas = [("Crédito", 10000, 200, "000111", "9001"), ("Crédito", 20000, 400, "000222", "9002")]
+        pagos = [("V$", 9995, "111"), ("MC$", 19300, "222")]  # $5 y $700 de diferencia
+        archivos = {"bordero": bordero_clp(pagos), "transbank": [transbank("tbk.xlsx", ventas)]}
+        r = logica_clp.procesar(archivos, parametros=Parametros(tolerancia_clp=1000))[0]
+        self.assertEqual(r["observaciones"], [])
+        self.assertEqual([f["nota"] for f in r["aceptadas"]], ["Diferencia de redondeo", "Diferencia dentro de la tolerancia"])
+        self.assertEqual(r["resumen"]["por_revisar"], 0)
+
+
+class PantallaDeProgresoTests(TestCase):
+    """El envío desde la pantalla de progreso recibe la dirección del resultado en JSON."""
+
+    def setUp(self):
+        self.client.force_login(User.objects.create_user("prueba", "prueba@hotel.cl", "Clave-Prueba-2026"))
+
+    def datos(self):
+        return {"bordero": bordero_clp(PAGOS_MIXTOS), "transbank": transbank("tbk.xlsx", VENTAS_MIXTAS)}
+
+    def test_con_progreso_responde_la_direccion_del_resultado(self):
+        respuesta = self.client.post("/conciliacion/pesos/", self.datos(), headers={"X-Progreso": "1"})
+        self.assertEqual(respuesta.status_code, 200)
+        url = respuesta.json()["url"]
+        c = Conciliacion.objects.get()
+        self.assertEqual(url, c.get_absolute_url())
+        # El aviso «guardada en el historial» se muestra al abrir el resultado.
+        self.assertContains(self.client.get(url), f"Conciliación N° {c.pk} guardada en el historial.")
+
+    def test_sin_progreso_sigue_redirigiendo(self):
+        respuesta = self.client.post("/conciliacion/pesos/", self.datos())
+        self.assertEqual(respuesta.status_code, 302)
+
+    def test_con_errores_devuelve_la_pagina(self):
+        respuesta = self.client.post("/conciliacion/pesos/", {"transbank": transbank("tbk.xlsx", VENTAS_MIXTAS)},
+                                     headers={"X-Progreso": "1"})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(respuesta["Content-Type"].startswith("text/html"))
+
+    def test_las_paginas_cargan_el_script_y_los_pasos(self):
+        pagina = self.client.get("/conciliacion/pesos/")
+        self.assertContains(pagina, "js/progreso.js")
+        self.assertContains(pagina, 'data-progreso-pasos="Leyendo el BORDERO')

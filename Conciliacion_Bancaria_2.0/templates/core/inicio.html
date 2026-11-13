@@ -14,6 +14,7 @@
 
 <div class="inicio">
     <div class="flujo">
+        {% if puede_conciliar %}
         <div class="accesos">
             <a class="acceso" href="{% url 'conciliacion:dolares' %}">
                 <span class="acceso__icono"><i data-lucide="circle-dollar-sign" aria-hidden="true"></i></span>
@@ -28,6 +29,15 @@
                 <span class="acceso__accion">Comenzar</span>
             </a>
         </div>
+        {% else %}
+        <div class="aviso aviso--info">
+            <i data-lucide="eye" aria-hidden="true"></i>
+            <div>
+                <strong>Tu perfil es de consulta</strong>
+                <p>Puedes revisar el historial, ver el detalle de cada conciliación y descargar sus reportes.</p>
+            </div>
+        </div>
+        {% endif %}
 
         <section class="tarjeta">
             <div class="tarjeta__cabeza cabeza-con-accion">

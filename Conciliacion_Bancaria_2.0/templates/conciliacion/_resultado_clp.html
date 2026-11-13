@@ -113,6 +113,8 @@
         </div>
     </div>
 
+    {% include "conciliacion/_graficos.html" %}
+
     <article class="tarjeta">
         <div class="tarjeta__cabeza">
             <h2>Abonos de Transbank por medio de pago</h2>
@@ -167,15 +169,16 @@
     </article>
 
     {% if tarjetas %}
-    <article class="tarjeta">
-        <div class="tarjeta__cabeza">
-            <h2>Tarjetas identificadas</h2>
-            <p class="tarjeta__bajada">
-                Marca, banco y país de cada tarjeta según sus 6 primeros dígitos (BIN).
-                Banco identificado en {{ tarjetas.con_banco }} de {{ tarjetas.total }} venta{{ tarjetas.total|pluralize }}{% if tarjetas.extranjeras %}; {{ tarjetas.extranjeras }} con tarjeta extranjera por $ {{ tarjetas.monto_extranjeras|floatformat:"0g" }}{% endif %}.
-            </p>
-        </div>
-        <div class="tablas-apiladas">
+    <details class="tarjeta seccion-plegable">
+        <summary class="seccion-plegable__cabeza">
+            <span class="seccion-plegable__textos">
+                <h2>Tarjetas identificadas</h2>
+                <span class="tarjeta__bajada">Marca, banco y país de cada tarjeta según sus 6 primeros dígitos (BIN).
+                Banco identificado en {{ tarjetas.con_banco }} de {{ tarjetas.total }} venta{{ tarjetas.total|pluralize }}{% if tarjetas.extranjeras %}; {{ tarjetas.extranjeras }} con tarjeta extranjera por $ {{ tarjetas.monto_extranjeras|floatformat:"0g" }}{% endif %}.</span>
+            </span>
+            <span class="seccion-plegable__accion" aria-hidden="true"><span class="seccion-plegable__ver">Ver</span><span class="seccion-plegable__ocultar">Ocultar</span><i data-lucide="chevron-down"></i></span>
+        </summary>
+        <div class="tablas-apiladas seccion-plegable__cuerpo">
             <div class="tabla-marco">
                 <table class="tabla">
                     <thead>
@@ -220,7 +223,7 @@
             </div>
         </div>
         <p class="fuente">{% if tarjetas.por_emisor|length > 10 %}Se muestran los 10 bancos con más monto; el detalle completo está en la descarga «Conciliación completa». {% endif %}Datos de BIN: bin-list-data (CC-BY-4.0).</p>
-    </article>
+    </details>
     {% endif %}
 
     {% if cuotas.ventas %}
@@ -267,7 +270,7 @@
     <article class="tarjeta">
         <div class="tarjeta__cabeza">
             <h2>Ventas por revisar</h2>
-            <p class="tarjeta__bajada">Diferencias de monto, ventas sin registro en el BORDERO y cruces con observación. Las diferencias de hasta $ {% if parametros %}{{ parametros.tolerancia_clp|floatformat:"0g" }}{% else %}10{% endif %} con el mismo código se aceptan como conciliadas.</p>
+            <p class="tarjeta__bajada">Diferencias de monto, ventas sin registro en el BORDERO y conciliadas con observación (código escrito distinto, cruzadas por monto y fecha o con el mismo código en otra fecha). Las diferencias de hasta $ {% if parametros %}{{ parametros.tolerancia_clp|floatformat:"0g" }}{% else %}10{% endif %} con el mismo código se aceptan y no aparecen aquí.</p>
         </div>
         {% if observaciones %}
         <div class="tabla-marco">
@@ -289,7 +292,7 @@
                     {% for o in observaciones %}
                     <tr>
                         <td>
-                            <span class="etiqueta {% if o.estado == 'conciliado' %}etiqueta--ok{% elif o.estado == 'diferencia' or o.estado == 'sin_registro' %}etiqueta--error{% endif %}">{{ o.estado_texto }}</span>
+                            <span class="etiqueta {% if o.estado == 'conciliado' %}etiqueta--aviso{% elif o.estado == 'diferencia' or o.estado == 'sin_registro' %}etiqueta--error{% endif %}">{% if o.estado == 'conciliado' %}Conciliado con observación{% else %}{{ o.estado_texto }}{% endif %}</span>
                             {% if o.nota %}<span class="tabla__sub">{{ o.nota }}</span>{% endif %}
                         </td>
                         <td>{{ o.medio }}</td>
@@ -307,6 +310,44 @@
         </div>
         {% else %}
         <p class="vacio">No hay ventas por revisar.</p>
+        {% endif %}
+
+        {% if aceptadas %}
+        <details class="seccion-plegable aceptadas">
+            <summary>
+                <span class="etiqueta etiqueta--ok">Conciliadas</span>
+                <span>{{ aceptadas|length }} venta{{ aceptadas|length|pluralize }} con el mismo código y una diferencia aceptada (redondeo o dentro de la tolerancia). No requiere{{ aceptadas|length|pluralize:"n" }} revisión.</span>
+                <span class="seccion-plegable__accion" aria-hidden="true"><span class="seccion-plegable__ver">Ver</span><span class="seccion-plegable__ocultar">Ocultar</span><i data-lucide="chevron-down"></i></span>
+            </summary>
+            <div class="tabla-marco">
+                <table class="tabla tabla--compacta">
+                    <thead>
+                        <tr>
+                            <th scope="col">Medio</th>
+                            <th scope="col">Fecha</th>
+                            <th scope="col">Autorización</th>
+                            <th scope="col" class="monto">Transbank</th>
+                            <th scope="col" class="monto">BORDERO</th>
+                            <th scope="col" class="monto">Diferencia</th>
+                            <th scope="col">Nota</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in aceptadas %}
+                        <tr>
+                            <td>{{ o.medio }}</td>
+                            <td class="num">{{ o.fecha }}</td>
+                            <td class="num">{{ o.autorizacion }}</td>
+                            <td class="monto">{{ o.monto|floatformat:"0g" }}</td>
+                            <td class="monto">{{ o.monto_bordero|floatformat:"0g" }}</td>
+                            <td class="monto">{{ o.diferencia|floatformat:"0g" }}</td>
+                            <td>{{ o.nota }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
         {% endif %}
     </article>
 </section>

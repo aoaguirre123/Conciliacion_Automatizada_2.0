@@ -5,6 +5,7 @@
 
 {% block scripts %}
 <script src="{% static 'js/soltar.js' %}?v={{ APP_VERSION }}" defer></script>
+<script src="{% static 'js/progreso.js' %}?v={{ APP_VERSION }}" defer></script>
 <script src="{% static 'js/conciliacion.js' %}?v={{ APP_VERSION }}" defer></script>
 <script src="{% static 'js/atajos.js' %}?v={{ APP_VERSION }}" defer></script>
 {% endblock %}
@@ -17,7 +18,7 @@
         <p class="criterios">
             <i data-lucide="scale" aria-hidden="true"></i>
             <span>Tolerancia: $ {{ configuracion.tolerancia_clp|floatformat:"0g" }} · fechas a {{ configuracion.ventana_dias }} día{{ configuracion.ventana_dias|pluralize }} de distancia como máximo.</span>
-            {% if user.is_staff %}<a href="{% url 'conciliacion:configuracion' %}">Cambiar</a>{% endif %}
+            {% if es_admin %}<a href="{% url 'conciliacion:configuracion' %}">Cambiar</a>{% endif %}
         </p>
     </div>
 </header>
@@ -35,9 +36,9 @@
 {% endif %}
 
 {% url 'conciliacion:ejemplo_pesos' as ejemplo_url %}
-{% include "conciliacion/_atajos.html" %}
+{% if es_admin %}{% include "conciliacion/_atajos.html" %}{% endif %}
 
-<form method="post" enctype="multipart/form-data" class="flujo" data-analisis>
+<form method="post" enctype="multipart/form-data" class="flujo" data-analisis data-progreso-titulo="Conciliando en pesos" data-progreso-pasos="Leyendo el BORDERO y los reportes de Transbank|Cruzando cada venta con el BORDERO|Revisando cuotas y la cartola|Generando los Excel y guardando en el historial">
     {% csrf_token %}
 
     <article class="tarjeta">
@@ -96,7 +97,7 @@
                 <i data-lucide="play" aria-hidden="true"></i>
                 <span data-analizar-texto>Analizar archivos</span>
             </button>
-            <p class="analisis__pie">Puede tardar unos segundos si los archivos son grandes.</p>
+            <p class="analisis__pie">Verás el avance mientras se suben y analizan los archivos.</p>
         </div>
     </article>
 </form>

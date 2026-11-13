@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block titulo %}Usuarios{% endblock %}
+
+{% block contenido %}
+<header class="encabezado">
+    <div class="encabezado__texto">
+        <h1>Usuarios</h1>
+        <p class="encabezado__bajada">Crea las cuentas del equipo y define qué puede hacer cada persona según su perfil.</p>
+    </div>
+    <a class="boton boton--principal" href="{% url 'usuarios:nuevo' %}">
+        <i data-lucide="user-plus" aria-hidden="true"></i> Nuevo usuario
+    </a>
+</header>
+
+{% include "partials/mensajes.html" %}
+
+<section class="perfiles" aria-label="Perfiles disponibles">
+    {% for r in resumen %}
+    <article class="perfil perfil--{{ r.clase }}">
+        <span class="perfil__icono" aria-hidden="true"><i data-lucide="{{ r.icono }}"></i></span>
+        <div class="perfil__cuerpo">
+            <h2 class="perfil__nombre">{{ r.nombre }}</h2>
+            <p class="perfil__texto">{{ r.descripcion }}</p>
+        </div>
+        <p class="perfil__total"><strong>{{ r.total }}</strong> activo{{ r.total|pluralize }}</p>
+    </article>
+    {% endfor %}
+</section>
+
+<article class="tarjeta tarjeta--tabla">
+    <div class="tabla-marco tabla-marco--sin-borde">
+        <table class="tabla tabla--ancha tabla--usuarios">
+            <caption class="oculto">Cuentas de usuario</caption>
+            <thead>
+                <tr>
+                    <th scope="col">Persona</th>
+                    <th scope="col">Perfil</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Último ingreso</th>
+                    <th scope="col"><span class="oculto">Acciones</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in usuarios %}
+                <tr{% if not u.is_active %} class="fila--inactiva"{% endif %}>
+                    <th scope="row">
+                        <span class="persona">
+                            <span class="persona__inicial persona__inicial--{{ u.perfil_clase }}" aria-hidden="true">{{ u.first_name|default:u.username|slice:":1"|upper }}</span>
+                            <span class="persona__datos">
+                                <span class="persona__nombre">{{ u.get_full_name|default:u.username }}{% if u.pk == user.pk %} <span class="etiqueta">Tú</span>{% endif %}</span>
+                                <span class="persona__correo">{{ u.email|default:"Sin correo" }}</span>
+                            </span>
+                        </span>
+                    </th>
+                    <td><span class="etiqueta etiqueta--perfil etiqueta--{{ u.perfil_clase }}">{{ u.etiqueta }}</span></td>
+                    <td>{% if u.is_active %}<span class="estado estado--activo">Activa</span>{% else %}<span class="estado">Desactivada</span>{% endif %}</td>
+                    <td class="num">{% if u.last_login %}{{ u.last_login|date:"d-m-Y H:i" }}{% else %}<span class="tenue">Nunca</span>{% endif %}</td>
+                    <td class="monto"><a class="enlace-fila" href="{% url 'usuarios:editar' u.pk %}" aria-label="Editar a {{ u.get_full_name|default:u.username }}">Editar</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</article>
+{% if inactivos %}
+<p class="fuente separado-arriba">Las cuentas desactivadas no pueden iniciar sesión, pero sus conciliaciones se conservan en el historial.</p>
+{% endif %}
+{% endblock %}

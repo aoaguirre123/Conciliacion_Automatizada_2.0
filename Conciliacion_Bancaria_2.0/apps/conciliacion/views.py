@@ -11,13 +11,18 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from . import bines, logica, logica_clp, registro
+from apps.usuarios.perfiles import es_administrador, solo_administradores, solo_conciliadores
+
+from . import bines, graficos, logica, logica_clp, registro
 from .dolar import dolar_para, fuente_elegida, fuente_otra
 from .forms import ConfiguracionForm
 from .models import Conciliacion, Configuracion, Reporte
 
+
 logger = logging.getLogger(__name__)
 
+SOLO_BORRAR = "Solo un administrador puede borrar conciliaciones del historial."
+SOLO_EJEMPLOS = "Solo un administrador puede conciliar con los archivos de ejemplo."
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
@@ -83,6 +88,10 @@ def _guardar_y_mostrar(request, moneda, archivos, nombres, resultado, reportes, 
             "(la base de datos no respondió). Intenta de nuevo en unos minutos; si se repite, avisa al administrador."
         ) from exc
     messages.success(request, f"Conciliación N° {conciliacion.pk} guardada en el historial.")
+    if request.headers.get("X-Progreso") == "1":
+        # Envío desde la pantalla de progreso (progreso.js): el navegador abre el detalle él mismo,
+        # así no se pide dos veces ni se pierde el mensaje de arriba.
+        return JsonResponse({"url": conciliacion.get_absolute_url()})
     return redirect(conciliacion)
 
 
@@ -127,6 +136,7 @@ def _pagina_dolares(request, errores=None):
 
 
 @login_required
+@solo_conciliadores
 def dolares(request):
     if request.method == "POST":
         archivos = {f"archivo{n}": request.FILES.get(f"archivo{n}") for n in range(1, 8)}
@@ -137,6 +147,8 @@ def dolares(request):
 
 
 @login_required
+@solo_conciliadores
+@solo_administradores(mensaje=SOLO_EJEMPLOS, destino="conciliacion:dolares")
 @solo_post("conciliacion:dolares")
 def ejemplo_dolares(request):
     """Concilia con los archivos predescargados de ejemplos/dolares."""
@@ -149,6 +161,7 @@ def ejemplo_dolares(request):
 
 
 @login_required
+@solo_conciliadores
 @solo_post("conciliacion:dolares")
 def identificar_dolares(request):
     """Tipo de cada archivo soltado en el recuadro único de la página en dólares."""
@@ -194,6 +207,7 @@ def _pagina_pesos(request, errores=None):
 
 
 @login_required
+@solo_conciliadores
 def pesos(request):
     if request.method == "POST":
         archivos = {campo: request.FILES.get(campo) for campo in logica_clp.NOMBRES_ARCHIVO}
@@ -205,6 +219,8 @@ def pesos(request):
 
 
 @login_required
+@solo_conciliadores
+@solo_administradores(mensaje=SOLO_EJEMPLOS, destino="conciliacion:pesos")
 @solo_post("conciliacion:pesos")
 def ejemplo_pesos(request):
     """Concilia con los archivos predescargados de ejemplos/pesos."""
@@ -218,6 +234,7 @@ def ejemplo_pesos(request):
 
 
 @login_required
+@solo_conciliadores
 @solo_post("conciliacion:pesos")
 def identificar_pesos(request):
     """Tipo de cada archivo soltado en el recuadro único de la página en pesos."""
@@ -266,6 +283,7 @@ def _lista_numeros(ids):
 
 
 @login_required
+@solo_administradores(mensaje=SOLO_BORRAR, destino="conciliacion:historial")
 @solo_post("conciliacion:historial")
 def borrar_historial(request):
     """Primer paso: muestra lo que se va a borrar (las seleccionadas o todas) y pide confirmarlo."""
@@ -287,6 +305,7 @@ def borrar_historial(request):
 
 
 @login_required
+@solo_administradores(mensaje=SOLO_BORRAR, destino="conciliacion:historial")
 @solo_post("conciliacion:historial")
 def borrar_confirmado(request):
     """Segundo paso: borra solo las conciliaciones confirmadas y comprueba que ya no estén."""
@@ -329,6 +348,14 @@ def detalle(request, pk):
         return redirect("conciliacion:historial")
     contexto = {"conciliacion": conciliacion, "reportes": conciliacion.reportes.defer("contenido")}
     contexto.update(conciliacion.resultado)
+    contexto["grafico"] = graficos.preparar(conciliacion.resultado, conciliacion.moneda)
+    if conciliacion.moneda == Conciliacion.PESOS and "observaciones" in conciliacion.resultado:
+        # Las conciliaciones guardadas antes de la v3.6.3 traen las diferencias aceptadas mezcladas.
+        filas = conciliacion.resultado["observaciones"]
+        contexto["observaciones"] = [f for f in filas if not logica_clp.diferencia_aceptada(f)]
+        contexto["aceptadas"] = conciliacion.resultado.get("aceptadas", []) + [
+            f for f in filas if logica_clp.diferencia_aceptada(f)
+        ]
     return render(request, "conciliacion/detalle.html", contexto)
 
 
@@ -354,7 +381,7 @@ SOLO_ADMINISTRADORES = "La configuración solo la pueden ver y cambiar los admin
 
 
 def _es_administrador(request):
-    if request.user.is_staff:
+    if es_administrador(request.user):
         return True
     messages.error(request, SOLO_ADMINISTRADORES)
     return False
@@ -362,7 +389,7 @@ def _es_administrador(request):
 
 @login_required
 def configuracion(request):
-    """Tolerancias, ventana de días y palabras clave de la cartola. Solo para usuarios staff."""
+    """Tolerancias, ventana de días y palabras clave de la cartola. Solo para administradores."""
     if not _es_administrador(request):
         return redirect("core:inicio")
     actual = Configuracion.actual()

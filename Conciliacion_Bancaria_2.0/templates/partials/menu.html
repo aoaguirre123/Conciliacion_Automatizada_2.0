@@ -10,6 +10,7 @@
 
         <div class="menu__grupo">
             <span class="menu__titulo">Conciliación</span>
+            {% if puede_conciliar %}
             <a class="menu__enlace{% if actual == 'conciliacion:dolares' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:dolares' %}"{% if actual == 'conciliacion:dolares' %} aria-current="page"{% endif %}>
                 <i data-lucide="circle-dollar-sign" aria-hidden="true"></i>
                 En dólares
@@ -18,22 +19,23 @@
                 <i data-lucide="banknote" aria-hidden="true"></i>
                 En pesos
             </a>
+            {% endif %}
             <a class="menu__enlace{% if actual == 'conciliacion:historial' or actual == 'conciliacion:detalle' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:historial' %}"{% if actual == 'conciliacion:historial' %} aria-current="page"{% endif %}>
                 <i data-lucide="history" aria-hidden="true"></i>
                 Historial
             </a>
         </div>
 
-        {% if user.is_staff %}
+        {% if es_admin %}
         <div class="menu__grupo">
             <span class="menu__titulo">Administración</span>
             <a class="menu__enlace{% if actual == 'conciliacion:configuracion' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:configuracion' %}"{% if actual == 'conciliacion:configuracion' %} aria-current="page"{% endif %}>
                 <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
                 Configuración
             </a>
-            <a class="menu__enlace" href="{% url 'admin:index' %}">
-                <i data-lucide="settings" aria-hidden="true"></i>
-                Usuarios y permisos
+            <a class="menu__enlace{% if actual == 'usuarios:lista' or actual == 'usuarios:nuevo' or actual == 'usuarios:editar' %} menu__enlace--activo{% endif %}" href="{% url 'usuarios:lista' %}"{% if actual == 'usuarios:lista' %} aria-current="page"{% endif %}>
+                <i data-lucide="users" aria-hidden="true"></i>
+                Usuarios
             </a>
         </div>
         {% endif %}

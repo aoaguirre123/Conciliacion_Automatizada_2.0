@@ -9,11 +9,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Ejemplo: avisar que se está procesando y evitar el doble clic.
     document.querySelectorAll('[data-ejemplo]').forEach(function (form) {
-        form.addEventListener('submit', function () {
-            var boton = form.querySelector('button');
-            var texto = form.querySelector('[data-ejemplo-texto]');
+        var boton = form.querySelector('button');
+        var texto = form.querySelector('[data-ejemplo-texto]');
+        var original = texto ? texto.textContent : '';
+        form.addEventListener('submit', function (evento) {
+            if (window.Progreso && window.Progreso.enviar(form)) evento.preventDefault();
             if (texto) texto.textContent = 'Analizando archivos de ejemplo…';
             setTimeout(function () { boton.disabled = true; }, 0);
+        });
+        form.addEventListener('progreso:cancelado', function () {
+            boton.disabled = false;
+            if (texto) texto.textContent = original;
         });
     });
 });

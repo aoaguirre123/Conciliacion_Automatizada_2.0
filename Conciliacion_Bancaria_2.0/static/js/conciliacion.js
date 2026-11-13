@@ -91,8 +91,21 @@ function iniciar(form) {
         });
     });
 
+    function restaurar() {
+        boton.classList.remove('ocupado');
+        boton.removeAttribute('aria-busy');
+        boton.disabled = false;
+        textoBoton.textContent = textoOriginal;
+        actualizar();
+    }
+
+    // Si la pantalla de progreso falla y la persona elige volver a intentar.
+    form.addEventListener('progreso:cancelado', restaurar);
+
     form.addEventListener('submit', function (evento) {
         if (boton.disabled) { evento.preventDefault(); return; }
+        // Envío en segundo plano con pantalla de progreso (progreso.js); si no se puede, envío normal.
+        if (window.Progreso && window.Progreso.enviar(form)) evento.preventDefault();
         boton.classList.add('ocupado');
         boton.setAttribute('aria-busy', 'true');
         textoBoton.textContent = 'Analizando…';
@@ -105,12 +118,7 @@ function iniciar(form) {
     });
 
     // Al volver con "atrás" el navegador puede restaurar la página: reactivar el botón.
-    window.addEventListener('pageshow', function () {
-        boton.classList.remove('ocupado');
-        boton.removeAttribute('aria-busy');
-        textoBoton.textContent = textoOriginal;
-        actualizar();
-    });
+    window.addEventListener('pageshow', restaurar);
 
     actualizar();
 }

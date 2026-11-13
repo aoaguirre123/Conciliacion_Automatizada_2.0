@@ -1,0 +1,117 @@
+{% load l10n %}
+{# Resumen gráfico de una conciliación (apps/conciliacion/graficos.py → preparar). #}
+{% if grafico %}
+<article class="tarjeta graficos" aria-labelledby="graficos-titulo">
+    <div class="tarjeta__cabeza">
+        <h2 id="graficos-titulo">Dónde mirar primero</h2>
+        <p class="tarjeta__bajada">Qué quedó por revisar en esta conciliación y dónde se concentra. Pasa el mouse sobre los gráficos para ver el detalle.</p>
+    </div>
+
+    {% if grafico.hallazgos %}
+    <ul class="hallazgos">
+        {% for frase in grafico.hallazgos %}
+        <li><i data-lucide="{% if forloop.first and not grafico.medios %}circle-check{% else %}arrow-right{% endif %}" aria-hidden="true"></i><span>{{ frase }}</span></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <section class="grafico" aria-labelledby="grafico-estados">
+        <h3 id="grafico-estados" class="grafico__titulo">Cómo quedaron las {{ grafico.total_ventas|floatformat:"0g" }} ventas de Transbank</h3>
+        <div class="segmentos" role="img" aria-label="{% for e in grafico.estados %}{{ e.nombre }}: {{ e.cantidad }} ({{ e.pct_texto }}){% if not forloop.last %}; {% endif %}{% endfor %}">
+            {% for e in grafico.estados %}
+            <span class="segmento grafico-tono--{{ e.tono }}" style="flex-grow: {{ e.cantidad|unlocalize }}" tabindex="0"
+                  data-tip="{{ e.nombre }}|{{ e.cantidad }} venta{{ e.cantidad|pluralize }} ({{ e.pct_texto }}){% if e.monto_texto %}|Monto de esas ventas: {{ e.monto_texto }}{% endif %}">{% if e.pct >= 9 %}{{ e.pct_texto }}{% endif %}</span>
+            {% endfor %}
+        </div>
+        <ul class="leyenda">
+            {% for e in grafico.estados %}
+            <li class="{% if e.por_revisar %}leyenda--revisar{% endif %}">
+                <span class="leyenda__muestra grafico-tono--{{ e.tono }}" aria-hidden="true"></span>
+                <span class="leyenda__nombre">{{ e.nombre }}</span>
+                <span class="leyenda__valor num">{{ e.cantidad|floatformat:"0g" }}{% if e.monto_texto %} · {{ e.monto_texto }}{% endif %}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if grafico.bordero_sin_abono and grafico.bordero_sin_abono.0 %}
+        <p class="grafico__nota">Además, {{ grafico.bordero_sin_abono.0|floatformat:"0g" }} pago{{ grafico.bordero_sin_abono.0|pluralize }} del BORDERO de estas fechas no tiene{{ grafico.bordero_sin_abono.0|pluralize:"n" }} abono en Transbank (descarga «BORDERO sin abono»).</p>
+        {% endif %}
+    </section>
+
+    {% if grafico.medios or grafico.dias %}
+    <div class="graficos__par">
+        {% if grafico.medios %}
+        <section class="grafico" aria-labelledby="grafico-medios">
+            <h3 id="grafico-medios" class="grafico__titulo">Monto por revisar por {{ grafico.nombre_medio }}</h3>
+            <ul class="barras">
+                {% for m in grafico.medios %}
+                <li class="barras__fila{% if m.limpio %} barras__fila--limpia{% endif %}" tabindex="0"
+                    data-tip="{{ m.nombre }}|{% if m.limpio %}Sin montos por revisar{% else %}{{ m.revisar_texto }} por revisar ({{ m.parte }} del total)|{{ m.revisar_n }} de {{ m.ventas }} venta{{ m.ventas|pluralize }}{% endif %}">
+                    <span class="barras__nombre">{{ m.nombre }}<span class="barras__sub">{% if m.limpio %}Cuadra{% else %}{{ m.revisar_n }} de {{ m.ventas }} venta{{ m.ventas|pluralize }}{% endif %}</span></span>
+                    <span class="barras__pista" aria-hidden="true"><span class="barras__relleno" style="width: {{ m.ancho|unlocalize }}%"></span></span>
+                    <span class="barras__valor num">{% if m.limpio %}—{% else %}{{ m.revisar_texto }}{% endif %}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        {% if grafico.dias %}
+        <section class="grafico" aria-labelledby="grafico-dias">
+            <h3 id="grafico-dias" class="grafico__titulo">Monto por revisar por día de venta</h3>
+            <div class="columnas{% if grafico.dias|length > 16 %} columnas--densas{% endif %}" role="img"
+                 aria-label="{% for d in grafico.dias %}{{ d.fecha_larga }}: {% if d.limpio %}sin diferencias{% else %}{{ d.revisar_texto }}{% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}">
+                {% for d in grafico.dias %}
+                <div class="columna{% if d.limpio %} columna--limpia{% endif %}{% if d.pico %} columna--pico{% endif %}" tabindex="0"
+                     data-tip="{{ d.fecha_larga }}|{% if d.limpio %}Sin montos por revisar{% else %}{{ d.revisar_texto }} por revisar ({{ d.revisar_n }} venta{{ d.revisar_n|pluralize }}){% endif %}|{{ d.ventas }} venta{{ d.ventas|pluralize }} del día por {{ d.monto_texto }}">
+                    <div class="columna__area">
+                        {% if d.pico %}<span class="columna__etiqueta num">{{ d.revisar_texto }}</span>{% endif %}
+                        <span class="columna__barra" style="height: {{ d.alto|unlocalize }}%"></span>
+                    </div>
+                    <span class="columna__fecha num">{{ d.fecha }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            <p class="grafico__nota">{% if grafico.dias_parciales %}Muestra solo los días con casos por revisar.{% else %}Los días en gris no tienen montos por revisar.{% endif %}</p>
+        </section>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if grafico.mayores %}
+    <section class="grafico" aria-labelledby="grafico-mayores">
+        <h3 id="grafico-mayores" class="grafico__titulo">Ventas con más monto por revisar</h3>
+        <div class="tabla-marco">
+            <table class="tabla tabla--compacta">
+                <thead>
+                    <tr>
+                        <th scope="col">Fecha</th>
+                        <th scope="col">{{ grafico.nombre_medio|capfirst }}</th>
+                        <th scope="col">Código</th>
+                        <th scope="col">Motivo</th>
+                        <th scope="col" class="monto">Monto venta</th>
+                        <th scope="col" class="monto">Por revisar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for v in grafico.mayores %}
+                    <tr>
+                        <td class="num">{{ v.fecha|default:"—" }}</td>
+                        <td>{{ v.medio|default:"—" }}</td>
+                        <td class="num">{{ v.codigo|default:"—" }}</td>
+                        <td><span class="motivo"><span class="leyenda__muestra grafico-tono--{% if v.estado == 'diferencia' %}error{% else %}error-rayado{% endif %}" aria-hidden="true"></span>{{ v.estado_texto }}</span></td>
+                        <td class="monto">{{ v.monto_texto }}</td>
+                        <td class="monto"><strong>{{ v.revisar_texto }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if grafico.sin_detalle %}
+    <p class="grafico__nota">Esta conciliación se hizo con una versión anterior: algunos gráficos no tienen todo el detalle. Las conciliaciones nuevas lo muestran completo.</p>
+    {% endif %}
+    <div class="grafico-tip" role="tooltip" hidden></div>
+</article>
+{% endif %}

@@ -1,6 +1,6 @@
 {# Botón de la página previa a la conciliación: ejemplo con archivos predescargados. #}
 <section class="atajos" aria-label="Ejemplo">
-    <form method="post" action="{{ ejemplo_url }}" data-ejemplo>
+    <form method="post" action="{{ ejemplo_url }}" data-ejemplo data-progreso-titulo="Conciliando con archivos de ejemplo" data-progreso-pasos="Leyendo los archivos de ejemplo|Cruzando las ventas|Generando los Excel y guardando en el historial">
         {% csrf_token %}
         <button type="submit" class="boton boton--secundario">
             <i data-lucide="flask-conical" aria-hidden="true"></i>

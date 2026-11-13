@@ -32,7 +32,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from . import lectura
+from . import graficos, lectura
 from . import parametros as parametros_mod
 from .parametros import Parametros
 
@@ -633,6 +633,25 @@ def _cruzar(ventas, pagos, periodo, tolerancia=TOLERANCIA, ventana=VENTANA_DIAS)
     return [p for idx, p in enumerate(pagos) if idx not in usados]
 
 
+# Notas de una venta conciliada con el mismo código cuya diferencia se acepta (no hay nada que revisar).
+NOTAS_DIFERENCIA_ACEPTADA = {"Diferencia de redondeo", "Diferencia dentro de la tolerancia"}
+
+
+def diferencia_aceptada(v):
+    """Conciliada con el mismo código y una diferencia de redondeo o dentro de la tolerancia.
+
+    Sirve para ventas (motor) y para filas guardadas en el historial (mismas claves estado y nota).
+    """
+    partes = {p.strip() for p in (v.get("nota") or "").split(";") if p.strip()}
+    return v.get("estado") == "conciliado" and bool(partes) and partes <= NOTAS_DIFERENCIA_ACEPTADA
+
+
+def con_observacion(v):
+    """Conciliada, pero con algo que mirar: código escrito distinto, cruce por monto y fecha
+    o mismo código en otra fecha."""
+    return v.get("estado") == "conciliado" and bool(v.get("nota")) and not diferencia_aceptada(v)
+
+
 def _por_revisar(v):
     if v["estado"] == "diferencia":
         return abs(v["diferencia"] or 0)
@@ -1017,7 +1036,7 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
         "por_revisar": total["por_revisar"],
         "cuadrado": total["por_revisar"] == 0 and not abonos_faltantes,
         "conciliadas": cuenta("conciliado"),
-        "con_nota": sum(1 for v in ventas if v["estado"] == "conciliado" and v["nota"]),
+        "con_nota": sum(1 for v in ventas if con_observacion(v)),
         "diferencias": cuenta("diferencia"),
         "sin_registro": cuenta("sin_registro"),
         "fuera_periodo": cuenta("fuera_periodo"),
@@ -1035,12 +1054,11 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
         "periodo_bordero": f"{periodo[0]:%d-%m-%Y} al {periodo[1]:%d-%m-%Y}" if periodo else "",
     }
 
-    observaciones = [
-        _fila_venta(v) for v in ventas
-        if v["estado"] in ("diferencia", "sin_registro") or (v["estado"] == "conciliado" and v["nota"])
-    ]
+    # Lo que hay que revisar. Las conciliadas con diferencia aceptada van aparte (no en «Por revisar»).
+    observaciones = [_fila_venta(v) for v in ventas if v["estado"] in ("diferencia", "sin_registro") or con_observacion(v)]
+    aceptadas = sorted((_fila_venta(v) for v in ventas if diferencia_aceptada(v)), key=lambda f: (f["medio"], f["fecha"]))
     orden = {"diferencia": 0, "sin_registro": 1, "conciliado": 2, "fuera_periodo": 3}
-    observaciones.sort(key=lambda f: (orden[f["estado"]], f["medio"], f["fecha"]))
+    observaciones.sort(key=lambda f: (orden[f["estado"]], not f["observacion"], f["medio"], f["fecha"]))
 
     resultado = {
         "periodo": periodo,
@@ -1048,15 +1066,17 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
         "medios": medios,
         "total_medios": total,
         "observaciones": observaciones,
+        "aceptadas": aceptadas,
         "tarjetas": _resumen_tarjetas(ventas),
         "archivos_usados": _archivos_usados(archivos, liquidaciones),
         "parametros": parametros.como_dict(),
         "cuotas": cuotas,
+        "graficos": graficos.datos_clp(ventas, pendientes_bordero, _por_revisar, con_observacion, ORDEN_MEDIOS),
     }
     reportes = [
         ("completa", "Conciliación completa", "Resumen, todas las ventas de Transbank y lo pendiente del BORDERO.",
          "conciliacion_clp_completa.xlsx", _excel_completo(resultado, ventas, pendientes_bordero, resumen)),
-        ("por_revisar", "Por revisar", "Diferencias de monto, ventas sin registro y cruces a revisar.",
+        ("por_revisar", "Por revisar", "Diferencias de monto, ventas sin registro y conciliadas con observación.",
          "conciliacion_clp_por_revisar.xlsx", _excel_ventas("Ventas por revisar", observaciones)),
         ("bordero_pendiente", "BORDERO sin abono", "Pagos con tarjeta del BORDERO de las fechas que traen los reportes, sin abono.",
          "bordero_sin_abono.xlsx", _excel_bordero(pendientes_bordero, resumen)),
@@ -1085,6 +1105,7 @@ def _fila_venta(v):
         "estado": v["estado"],
         "estado_texto": ESTADOS[v["estado"]],
         "nota": v["nota"],
+        "observacion": con_observacion(v),
     }
 
 
