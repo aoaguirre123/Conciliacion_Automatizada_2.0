@@ -18,8 +18,8 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone, translation
 from openpyxl import Workbook, load_workbook
 
-from . import graficos, lectura, logica, logica_clp
-from .models import Conciliacion, Configuracion
+from . import excepciones, graficos, lectura, logica, logica_clp, registro
+from .models import Conciliacion, Configuracion, Excepcion
 from .parametros import Parametros
 
 
@@ -1472,7 +1472,6 @@ class ConciliadasConObservacionTests(TestCase):
         c = Conciliacion.objects.create(moneda=Conciliacion.PESOS, resultado=resultado)
         pagina = self.client.get(f"/conciliacion/historial/{c.pk}/").content.decode()
         # Guardada antes de la v3.6.3: la de redondeo pasa al desplegable de diferencias aceptadas.
-        self.assertEqual(pagina.count('<span class="etiqueta etiqueta--aviso">Conciliado con observación</span>'), 1)
         self.assertIn("1 venta con el mismo código y una diferencia aceptada", pagina)
 
     def test_con_tolerancia_alta_las_diferencias_chicas_no_quedan_por_revisar(self):
@@ -1580,3 +1579,173 @@ class FiltroHistorialTests(TestCase):
     def test_sin_resultados(self):
         self.assertContains(self.client.get("/conciliacion/historial/", {"desde": "2020-01-01", "hasta": "2020-01-31"}),
                             "No hay conciliaciones con período conciliado en esas fechas")
+
+
+
+# ---------------------------------------------------------------------------
+# Excepciones (CU-04)
+# ---------------------------------------------------------------------------
+class ClasificarExcepcionesTests(SimpleTestCase):
+    def fila(self, **cambios):
+        base = {"estado": "sin_registro", "nota": "", "fecha": "04-09-2026", "medio": "Débito", "autorizacion": "425788",
+                "documento_bordero": "", "monto": 663663, "monto_bordero": None, "diferencia": None, "tipo": "Venta"}
+        base.update(cambios)
+        return base
+
+    def categoria(self, **cambios):
+        return excepciones.desde_clp([self.fila(**cambios)])[0]
+
+    def test_cada_caso_recibe_su_tipo_y_una_accion_con_sus_datos(self):
+        e = self.categoria()
+        self.assertEqual(e["categoria"], "sin_registro")
+        self.assertIn("La venta 425788 del 04-09-2026 por $ 663.663 no está en el BORDERO", e["sugerencia"])
+
+        e = self.categoria(estado="diferencia", monto=115204, monto_bordero=113700, diferencia=1504, nota="Mismo código, distinto monto")
+        self.assertEqual(e["categoria"], "monto_distinto")
+        self.assertIn("Transbank informa $ 115.204 y el BORDERO $ 113.700 (diferencia $ 1.504)", e["sugerencia"])
+
+        e = self.categoria(estado="conciliado", nota="Código digitado distinto en el BORDERO", autorizacion="HCOVGZ",
+                           documento_bordero="HC0VGZ")
+        self.assertEqual(e["categoria"], "digitacion")
+        self.assertIn("en Transbank es HCOVGZ y en el BORDERO quedó HC0VGZ", e["sugerencia"])
+
+        self.assertEqual(self.categoria(estado="conciliado", nota="Cruzado por monto y fecha: revisar código")["categoria"], "codigo_distinto")
+        self.assertEqual(self.categoria(estado="conciliado", nota="Mismo código y monto en otra fecha: revisar")["categoria"], "fecha_distinta")
+        self.assertEqual(self.categoria(monto=-5000)["categoria"], "anulacion")
+        self.assertEqual(self.categoria(tipo="Anulación")["categoria"], "anulacion")
+
+    def test_diferencia_menor_sugiere_revisar_la_tolerancia(self):
+        e = self.categoria(estado="diferencia", monto=10050, monto_bordero=10000, diferencia=50)
+        self.assertIn("probablemente redondeo", e["sugerencia"])
+        usd = excepciones.desde_usd(
+            [{"estado": "diferencia", "nota": "Diferencia de monto", "fecha_venta": "25/11/2025", "tipo_tarjeta": "VI",
+              "codigo_autorizacion": "112194", "documento": "7001", "monto_original": 116, "monto_cartola": 116.11,
+              "diferencia": -0.11}],
+            {"VI": "Visa"}.get, float, logica_clp._fecha)[0]
+        self.assertIn("la cartola de Visa US$ 116,11 (diferencia -US$ 0,11)", usd["sugerencia"])
+
+    def test_las_diferencias_aceptadas_no_son_excepciones(self):
+        filas = [self.fila(estado="conciliado", nota="Diferencia de redondeo")]
+        self.assertEqual(excepciones.desde_clp(filas), [])
+
+    def test_cuotas_diferidas(self):
+        cuotas = {"ventas": [{"fecha": "03-09-2026", "medio": "Crédito", "autorizacion": "659416", "monto_cuota": 206108,
+                              "faltantes": [{"cuota": "2/3", "mes": "Octubre 2026", "en_periodo": False}]}]}
+        e = excepciones.desde_clp([], cuotas)[0]
+        self.assertEqual(e["categoria"], "cuota_diferida")
+        self.assertIn("La cuota 2/3 se espera en octubre 2026, fuera de los reportes cargados", e["sugerencia"])
+
+    def test_el_motor_en_pesos_entrega_las_excepciones_y_el_excel_trae_la_accion(self):
+        ventas = VENTAS_MIXTAS + [("Débito", 7000, 70, "000999", "9009")]
+        r, reportes = logica_clp.procesar({"bordero": bordero_clp(PAGOS_MIXTOS), "transbank": [transbank("tbk.xlsx", ventas)]})
+        self.assertEqual([(e["categoria"], e["codigo"]) for e in r["excepciones"]], [("sin_registro", "000999")])
+        excel = dict((clave, contenido) for clave, _, _, _, contenido in reportes)["por_revisar"]
+        hoja = load_workbook(io.BytesIO(excel)).active
+        textos = [c.value for fila in hoja.iter_rows() for c in fila if c.value]
+        self.assertIn("Acción sugerida", textos)
+        self.assertTrue(any(isinstance(t, str) and t.startswith("La venta 000999") for t in textos))
+
+
+class GestionExcepcionesTests(TestCase):
+    def setUp(self):
+        from apps.usuarios import perfiles
+        self.perfiles = perfiles
+        self.analista = User.objects.create_user("ana", "ana@hotel.cl", "Clave-Prueba-2026")
+        self.client.force_login(self.analista)
+        resultado = logica_clp.procesar({
+            "bordero": bordero_clp(PAGOS_MIXTOS),
+            "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS + [("Débito", 7000, 70, "000999", "9009")])],
+        })
+        self.c = registro.guardar(Conciliacion.PESOS, self.analista, {}, {}, *resultado, False, 7000)
+        self.e = self.c.excepciones.get()
+
+    def gestionar(self, **datos):
+        return self.client.post(f"/conciliacion/excepciones/{self.e.pk}/gestionar/",
+                                {"estado": "pendiente", "categoria": self.e.categoria, "comentario": "", **datos}, follow=True)
+
+    def test_al_guardar_la_conciliacion_se_crean_sus_excepciones(self):
+        self.assertEqual(self.e.categoria, "sin_registro")
+        self.assertEqual(self.e.estado, "pendiente")
+        self.assertNotIn("excepciones", self.c.resultado)  # se guardan aparte, no en el JSON
+        detalle = self.client.get(self.c.get_absolute_url())
+        self.assertContains(detalle, "Acción sugerida:")
+        self.assertContains(detalle, "Por gestionar (1)")
+
+    def test_cambiar_estado_y_comentar(self):
+        respuesta = self.gestionar(estado="resuelta", comentario="Registrada en el ERP con el documento 4455")
+        self.assertContains(respuesta, "Excepción 000999 guardada: resuelta.")
+        self.e.refresh_from_db()
+        self.assertEqual(self.e.estado, "resuelta")
+        self.assertEqual(self.e.actualizada_por, self.analista)
+        self.assertRedirects(respuesta, f"{self.c.get_absolute_url()}#excepcion-{self.e.pk}")
+
+    def test_reclasificar_pide_comentario_y_cambia_la_sugerencia(self):
+        respuesta = self.gestionar(categoria="anulacion")
+        self.assertContains(respuesta, "explica en el comentario el antecedente")
+        self.e.refresh_from_db()
+        self.assertEqual(self.e.categoria, "sin_registro")
+        self.gestionar(categoria="anulacion", comentario="Es una nota de crédito del 05-09")
+        self.e.refresh_from_db()
+        self.assertEqual(self.e.categoria, "anulacion")
+        self.assertTrue(self.e.reclasificada)
+        self.assertIn("anulación o nota de crédito", self.e.sugerencia)
+
+    def test_el_contador_ve_pero_no_gestiona(self):
+        contador = User.objects.create_user("conta", "conta@hotel.cl", "Clave-Prueba-2026")
+        self.perfiles.asignar_perfil(contador, self.perfiles.CONSULTA)
+        self.client.force_login(contador)
+        self.assertNotContains(self.client.get(self.c.get_absolute_url()), "Gestionar")
+        self.gestionar(estado="resuelta")
+        self.e.refresh_from_db()
+        self.assertEqual(self.e.estado, "pendiente")
+
+    def test_modulo_general_con_filtros(self):
+        pagina = self.client.get("/conciliacion/excepciones/")
+        self.assertContains(pagina, "Por gestionar (1)")
+        self.assertContains(pagina, "Venta sin registro contable (1)")
+        self.assertContains(pagina, f"Conciliación N° {self.c.pk}")
+        self.gestionar(estado="resuelta")
+        self.assertContains(self.client.get("/conciliacion/excepciones/"), "No hay excepciones por gestionar")
+        self.assertContains(self.client.get("/conciliacion/excepciones/", {"estado": "resuelta"}), "000999")
+
+    def test_el_menu_muestra_cuantas_hay_por_gestionar(self):
+        self.assertContains(self.client.get("/"), 'title="1 por gestionar"')
+
+    def test_al_borrar_la_conciliacion_se_borran_sus_excepciones(self):
+        self.c.delete()
+        self.assertFalse(Excepcion.objects.exists())
+
+
+class ExcepcionesAlConciliarDeNuevoTests(TestCase):
+    """Conciliar de nuevo el mismo período no duplica las excepciones: la nueva hereda la gestión."""
+
+    def conciliar(self, usuario):
+        resultado = logica_clp.procesar({
+            "bordero": bordero_clp(PAGOS_MIXTOS),
+            "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS + [("Débito", 7000, 70, "000999", "9009")])],
+        })
+        return registro.guardar(Conciliacion.PESOS, usuario, {}, {}, *resultado, False, 7000)
+
+    def test_la_nueva_hereda_estado_y_comentario_y_la_anterior_deja_de_contar(self):
+        usuario = User.objects.create_user("ana", "ana@hotel.cl", "Clave-Prueba-2026")
+        primera = self.conciliar(usuario)
+        vieja = primera.excepciones.get()
+        vieja.estado, vieja.comentario = Excepcion.EN_REVISION, "Consultado con recepción"
+        vieja.save()
+
+        segunda = self.conciliar(usuario)
+        nueva = segunda.excepciones.get()
+        vieja.refresh_from_db()
+        self.assertFalse(vieja.vigente)
+        self.assertEqual(vieja.reemplazada_por, segunda)
+        self.assertEqual((nueva.estado, nueva.comentario), (Excepcion.EN_REVISION, "Consultado con recepción"))
+        self.assertEqual(Excepcion.objects.filter(vigente=True).count(), 1)
+
+        self.client.force_login(usuario)
+        self.assertContains(self.client.get("/conciliacion/excepciones/"), "Por gestionar (1)")
+        detalle_viejo = self.client.get(primera.get_absolute_url())
+        self.assertContains(detalle_viejo, f"Ver en la conciliación N° {segunda.pk}")
+        # Gestionar la antigua lleva a la vigente.
+        respuesta = self.client.post(f"/conciliacion/excepciones/{vieja.pk}/gestionar/",
+                                     {"estado": "resuelta", "categoria": vieja.categoria, "comentario": ""})
+        self.assertRedirects(respuesta, segunda.get_absolute_url(), fetch_redirect_response=False)

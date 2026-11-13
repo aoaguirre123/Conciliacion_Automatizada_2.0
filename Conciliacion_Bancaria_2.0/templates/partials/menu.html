@@ -20,6 +20,11 @@
                 En pesos
             </a>
             {% endif %}
+            <a class="menu__enlace{% if actual == 'conciliacion:excepciones' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:excepciones' %}"{% if actual == 'conciliacion:excepciones' %} aria-current="page"{% endif %}>
+                <i data-lucide="list-checks" aria-hidden="true"></i>
+                Excepciones
+                {% if excepciones_abiertas %}<span class="menu__contador" title="{{ excepciones_abiertas }} por gestionar">{{ excepciones_abiertas }}</span>{% endif %}
+            </a>
             <a class="menu__enlace{% if actual == 'conciliacion:historial' or actual == 'conciliacion:detalle' %} menu__enlace--activo{% endif %}" href="{% url 'conciliacion:historial' %}"{% if actual == 'conciliacion:historial' %} aria-current="page"{% endif %}>
                 <i data-lucide="history" aria-hidden="true"></i>
                 Historial

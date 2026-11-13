@@ -1,7 +1,8 @@
 from django import forms
 
 from . import parametros as p
-from .models import Configuracion
+from . import excepciones as ex
+from .models import Configuracion, Excepcion
 
 
 class ConfiguracionForm(forms.ModelForm):
@@ -43,3 +44,28 @@ class ConfiguracionForm(forms.ModelForm):
                 + ", ".join(cortas) + "."
             )
         return ", ".join(palabras)
+
+
+class ExcepcionForm(forms.ModelForm):
+    """Gestión de una excepción: estado, tipo (reclasificación manual) y comentario."""
+
+    class Meta:
+        model = Excepcion
+        fields = ["estado", "categoria", "comentario"]
+        widgets = {
+            "estado": forms.RadioSelect,
+            "categoria": forms.Select(attrs={"class": "entrada"}),
+            "comentario": forms.Textarea(attrs={"class": "entrada", "rows": 2, "maxlength": 1000,
+                                                "placeholder": "Qué se revisó o corrigió, número de documento, etc."}),
+        }
+        labels = {"estado": "Estado", "categoria": "Tipo de excepción", "comentario": "Comentario"}
+
+    def clean_comentario(self):
+        return self.cleaned_data["comentario"].strip()
+
+    def clean(self):
+        datos = super().clean()
+        categoria = datos.get("categoria")
+        if categoria and categoria != self.instance.categoria_auto and categoria != self.instance.categoria and not datos.get("comentario"):
+            self.add_error("comentario", "Para cambiar el tipo de excepción, explica en el comentario el antecedente.")
+        return datos

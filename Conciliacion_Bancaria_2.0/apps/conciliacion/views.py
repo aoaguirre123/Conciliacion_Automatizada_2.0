@@ -13,15 +13,16 @@ from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.usuarios.perfiles import es_administrador, solo_administradores, solo_conciliadores
 
-from . import bines, graficos, logica, logica_clp, registro
+from . import bines, excepciones as ex, graficos, logica, logica_clp, registro
 from .dolar import dolar_para, fuente_elegida, fuente_otra
-from .forms import ConfiguracionForm
-from .models import Conciliacion, Configuracion, Reporte
+from .forms import ConfiguracionForm, ExcepcionForm
+from .models import Conciliacion, Configuracion, Excepcion, Reporte
 
 
 logger = logging.getLogger(__name__)
@@ -458,6 +459,15 @@ def detalle(request, pk):
     contexto = {"conciliacion": conciliacion, "reportes": conciliacion.reportes.defer("contenido")}
     contexto.update(conciliacion.resultado)
     contexto["grafico"] = graficos.preparar(conciliacion.resultado, conciliacion.moneda)
+    lista = list(conciliacion.excepciones.select_related("actualizada_por"))
+    for e in lista:
+        e.conciliacion = conciliacion  # evita una consulta por excepción
+    contexto["lista_excepciones"] = lista
+    contexto["excepciones_por_estado"] = _contar_por_estado([e for e in lista if e.vigente])
+    contexto["excepciones_reemplazadas"] = sum(1 for e in lista if not e.vigente)
+    contexto["excepciones_antiguas"] = not lista and "graficos" not in conciliacion.resultado
+    contexto["estados_excepcion"] = ex.ESTADOS
+    contexto["categorias_excepcion"] = ex.CATEGORIAS
     if conciliacion.moneda == Conciliacion.PESOS and "observaciones" in conciliacion.resultado:
         # Las conciliaciones guardadas antes de la v3.6.3 traen las diferencias aceptadas mezcladas.
         filas = conciliacion.resultado["observaciones"]
@@ -533,3 +543,114 @@ def restablecer_configuracion(request):
     config.save()
     messages.success(request, "Se restablecieron los valores por defecto.")
     return redirect("conciliacion:configuracion")
+
+
+# ---------------------------------------------------------------------------
+# Excepciones (CU-04): lista general y gestión de cada una
+# ---------------------------------------------------------------------------
+ABIERTAS = (Excepcion.PENDIENTE, Excepcion.EN_REVISION)
+FILTRO_ESTADO = {
+    "abiertas": "Por gestionar",
+    Excepcion.PENDIENTE: "Pendientes",
+    Excepcion.EN_REVISION: "En revisión",
+    Excepcion.RESUELTA: "Resueltas",
+    "todas": "Todas",
+}
+
+
+def _contar_por_estado(excepciones):
+    cuenta = {clave: 0 for clave, _ in ex.ESTADOS}
+    for e in excepciones:
+        cuenta[e.estado] += 1
+    return cuenta
+
+
+@login_required
+def excepciones(request):
+    """Todas las excepciones de las conciliaciones, para ir gestionándolas (por defecto, las abiertas)."""
+    estado = request.GET.get("estado") if request.GET.get("estado") in FILTRO_ESTADO else "abiertas"
+    categoria = request.GET.get("categoria") if request.GET.get("categoria") in ex.NOMBRE_CATEGORIA else ""
+    moneda = request.GET.get("moneda") if request.GET.get("moneda") in (Conciliacion.DOLARES, Conciliacion.PESOS) else ""
+
+    base = (Excepcion.objects.filter(vigente=True).select_related("conciliacion", "actualizada_por")
+            .defer("conciliacion__resultado"))
+    if moneda:
+        base = base.filter(conciliacion__moneda=moneda)
+    por_estado = {fila["estado"]: fila["n"] for fila in base.order_by().values("estado").annotate(n=Count("pk"))}
+    registros = base
+    if estado == "abiertas":
+        registros = registros.filter(estado__in=ABIERTAS)
+    elif estado != "todas":
+        registros = registros.filter(estado=estado)
+    por_categoria = {fila["categoria"]: fila["n"] for fila in registros.order_by().values("categoria").annotate(n=Count("pk"))}
+    if categoria:
+        registros = registros.filter(categoria=categoria)
+    registros = registros.order_by("-conciliacion__creada", "conciliacion_id", "orden")
+    pagina = Paginator(registros, 25).get_page(request.GET.get("pagina"))
+
+    def consulta(**cambios):
+        valores = {"estado": estado, "categoria": categoria, "moneda": moneda, **cambios}
+        if valores["estado"] == "abiertas":
+            valores.pop("estado")
+        return urlencode({k: v for k, v in valores.items() if v})
+
+    return render(request, "conciliacion/excepciones.html", {
+        "pagina": pagina,
+        "estado": estado,
+        "categoria": categoria,
+        "moneda": moneda,
+        "filtros_estado": [
+            {"clave": clave, "texto": texto, "consulta": consulta(estado=clave, categoria=""), "activo": clave == estado,
+             "n": sum(por_estado.get(e, 0) for e in ABIERTAS) if clave == "abiertas"
+             else sum(por_estado.values()) if clave == "todas" else por_estado.get(clave, 0)}
+            for clave, texto in FILTRO_ESTADO.items()
+        ],
+        "filtros_categoria": [
+            {"clave": clave, "texto": texto, "n": por_categoria[clave], "activo": clave == categoria,
+             "consulta": consulta(categoria="" if clave == categoria else clave)}
+            for clave, texto in ex.CATEGORIAS if por_categoria.get(clave)
+        ],
+        "consulta_moneda": {m: consulta(moneda=m) for m in (Conciliacion.DOLARES, Conciliacion.PESOS)},
+        "consulta_sin_moneda": consulta(moneda=""),
+        "estados_excepcion": ex.ESTADOS,
+        "categorias_excepcion": ex.CATEGORIAS,
+        "consulta": consulta(),
+        "texto_estado": FILTRO_ESTADO[estado],
+    })
+
+
+def _volver(request, excepcion):
+    destino = request.POST.get("next") or ""
+    if destino and url_has_allowed_host_and_scheme(destino, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return redirect(f"{destino.split('#')[0]}#excepcion-{excepcion.pk}")
+    return redirect(excepcion.get_absolute_url())
+
+
+@login_required
+@solo_conciliadores(destino="conciliacion:excepciones")
+@solo_post("conciliacion:excepciones")
+def gestionar_excepcion(request, pk):
+    excepcion = Excepcion.objects.select_related("conciliacion").filter(pk=pk).first()
+    if excepcion is None:
+        messages.warning(request, "Esa excepción ya no existe: la conciliación fue borrada del historial.")
+        return redirect("conciliacion:excepciones")
+    if not excepcion.vigente and excepcion.reemplazada_por_id:
+        messages.info(request, f"Esa venta se volvió a conciliar: gestiónala en la conciliación N° {excepcion.reemplazada_por_id}.")
+        return redirect(excepcion.reemplazada_por)
+    categoria_antes = excepcion.categoria
+    formulario = ExcepcionForm(request.POST, instance=excepcion)
+    if not formulario.is_valid():
+        errores = [e for lista in formulario.errors.values() for e in lista]
+        messages.error(request, f"No se guardó la excepción {excepcion.codigo or ''}: " + " ".join(errores))
+        return _volver(request, excepcion)
+    excepcion = formulario.save(commit=False)
+    if excepcion.categoria != categoria_antes:
+        excepcion.sugerencia = ex.sugerencia_de(excepcion.categoria, excepcion.caso())
+    excepcion.actualizada = timezone.now()
+    excepcion.actualizada_por = request.user
+    excepcion.save()
+    texto = f"Excepción {excepcion.codigo or ''} guardada: {excepcion.get_estado_display().lower()}"
+    if excepcion.categoria != categoria_antes:
+        texto += f", ahora como «{excepcion.get_categoria_display()}»"
+    messages.success(request, texto + ".")
+    return _volver(request, excepcion)

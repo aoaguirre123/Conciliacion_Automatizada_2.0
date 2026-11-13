@@ -267,53 +267,10 @@
     </article>
     {% endif %}
 
-    <article class="tarjeta">
-        <div class="tarjeta__cabeza">
-            <h2>Ventas por revisar</h2>
-            <p class="tarjeta__bajada">Diferencias de monto, ventas sin registro en el BORDERO y conciliadas con observación (código escrito distinto, cruzadas por monto y fecha o con el mismo código en otra fecha). Las diferencias de hasta $ {% if parametros %}{{ parametros.tolerancia_clp|floatformat:"0g" }}{% else %}10{% endif %} con el mismo código se aceptan y no aparecen aquí.</p>
-        </div>
-        {% if observaciones %}
-        <div class="tabla-marco">
-            <table class="tabla tabla--ancha">
-                <thead>
-                    <tr>
-                        <th scope="col">Estado</th>
-                        <th scope="col">Medio</th>
-                        <th scope="col">Fecha</th>
-                        <th scope="col">Local</th>
-                        <th scope="col">Autorización</th>
-                        <th scope="col">Tarjeta</th>
-                        <th scope="col" class="monto">Transbank</th>
-                        <th scope="col" class="monto">BORDERO</th>
-                        <th scope="col" class="monto">Diferencia</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for o in observaciones %}
-                    <tr>
-                        <td>
-                            <span class="etiqueta {% if o.estado == 'conciliado' %}etiqueta--aviso{% elif o.estado == 'diferencia' or o.estado == 'sin_registro' %}etiqueta--error{% endif %}">{% if o.estado == 'conciliado' %}Conciliado con observación{% else %}{{ o.estado_texto }}{% endif %}</span>
-                            {% if o.nota %}<span class="tabla__sub">{{ o.nota }}</span>{% endif %}
-                        </td>
-                        <td>{{ o.medio }}</td>
-                        <td class="num">{{ o.fecha }}</td>
-                        <td>{{ o.local|title }}</td>
-                        <td class="num">{{ o.autorizacion }}{% if o.documento_distinto %} <span class="tabla__sub">En BORDERO: {{ o.documento_bordero }}</span>{% endif %}</td>
-                        <td>{{ o.marca|default:"—" }}{% if o.banco %}<span class="tabla__sub">{{ o.banco }}{% if o.pais %}, {{ o.pais }}{% endif %}</span>{% endif %}</td>
-                        <td class="monto">{{ o.monto|floatformat:"0g" }}</td>
-                        <td class="monto">{% if o.monto_bordero is not None %}{{ o.monto_bordero|floatformat:"0g" }}{% else %}—{% endif %}</td>
-                        <td class="monto">{% if o.diferencia is None %}—{% elif o.estado == "diferencia" %}<span class="diferencia diferencia--error">{{ o.diferencia|floatformat:"0g" }}</span>{% else %}<span class="diferencia diferencia--cero">{{ o.diferencia|floatformat:"0g" }}</span>{% endif %}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <p class="vacio">No hay ventas por revisar.</p>
-        {% endif %}
+    {% include "conciliacion/_excepciones_detalle.html" %}
 
-        {% if aceptadas %}
-        <details class="seccion-plegable aceptadas">
+    {% if aceptadas %}
+        <details class="tarjeta seccion-plegable aceptadas">
             <summary>
                 <span class="etiqueta etiqueta--ok">Conciliadas</span>
                 <span>{{ aceptadas|length }} venta{{ aceptadas|length|pluralize }} con el mismo código y una diferencia aceptada (redondeo o dentro de la tolerancia). No requiere{{ aceptadas|length|pluralize:"n" }} revisión.</span>
@@ -348,6 +305,5 @@
                 </table>
             </div>
         </details>
-        {% endif %}
-    </article>
+    {% endif %}
 </section>

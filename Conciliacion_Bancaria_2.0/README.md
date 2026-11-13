@@ -79,7 +79,7 @@ existían quedan como Administrador (si eran staff) o Analista de Tesorería.
 
 ## Cómo comprobar que estás viendo esta versión
 
-El pie de página dice **Conciliación bancaria v3.8.0**.
+El pie de página dice **Conciliación bancaria v3.9.0**.
 
 ## Al actualizar desde una versión anterior
 
@@ -123,12 +123,21 @@ Tus usuarios y el historial se mantienen.
   progreso: la subida de los archivos muestra su avance real y el análisis en el servidor avanza
   por etapas, con el tiempo transcurrido (`static/js/progreso.js`). Si el servidor no responde o
   la sesión terminó, lo dice y permite volver a intentar.
+- **Excepciones** (CU-04, menú «Excepciones» y sección en el detalle de cada conciliación): cada caso
+  por revisar se clasifica automáticamente (error de digitación del código, código no coincide,
+  registrada en otra fecha u otra tarjeta, diferencia de monto, venta sin registro contable,
+  anulación o nota de crédito, cuota diferida no encontrada) con una acción sugerida armada con
+  sus datos (`apps/conciliacion/excepciones.py`). El analista o el administrador la marca
+  pendiente, en revisión o resuelta, deja un comentario y puede reclasificarla (con comentario
+  obligatorio). Si el mismo período se concilia de nuevo, la excepción nueva hereda la gestión de
+  la anterior y esta deja de contar. El Excel «Por revisar» trae el tipo y la acción sugerida.
+  La migración `0006_excepciones` crea las excepciones de las conciliaciones en pesos ya guardadas.
 - **Dónde mirar primero** (en el resultado de cada conciliación y en su detalle del historial):
   frases que dicen por dónde empezar y gráficos de cómo quedaron las ventas (barra por estado),
   el monto por revisar por medio de pago o marca, el monto por revisar por día de venta y las
   ventas con más monto por revisar. Los totales se calculan al conciliar
   (`apps/conciliacion/graficos.py`) y se guardan con la conciliación; las conciliaciones
-  hechas antes de la v3.8.0 muestran lo que se puede armar con lo que guardaron.
+  hechas antes de la v3.9.0 muestran lo que se puede armar con lo que guardaron.
 - **Historial**: todas las conciliaciones guardadas, con su resultado y sus Excel.
   Se filtra por moneda y por fechas: por **período conciliado** (las que tienen al menos un día
   de ventas dentro del rango) o por **fecha en que se hizo**, con atajos (este mes, mes anterior,

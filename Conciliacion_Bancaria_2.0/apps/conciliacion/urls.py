@@ -17,6 +17,8 @@ urlpatterns = [
     path("historial/borrar/confirmar/", views.borrar_confirmado, name="borrar_confirmado"),
     path("historial/<int:pk>/", views.detalle, name="detalle"),
     path("historial/<int:pk>/descargar/<slug:clave>/", views.descargar, name="descargar"),
+    path("excepciones/", views.excepciones, name="excepciones"),
+    path("excepciones/<int:pk>/gestionar/", views.gestionar_excepcion, name="gestionar_excepcion"),
     path("configuracion/", views.configuracion, name="configuracion"),
     path("configuracion/restablecer/", views.restablecer_configuracion, name="restablecer_configuracion"),
 ]

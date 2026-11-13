@@ -32,7 +32,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from . import graficos, lectura
+from . import excepciones, graficos, lectura
 from . import parametros as parametros_mod
 from .parametros import Parametros
 
@@ -1057,6 +1057,7 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
     # Lo que hay que revisar. Las conciliadas con diferencia aceptada van aparte (no en «Por revisar»).
     observaciones = [_fila_venta(v) for v in ventas if v["estado"] in ("diferencia", "sin_registro") or con_observacion(v)]
     aceptadas = sorted((_fila_venta(v) for v in ventas if diferencia_aceptada(v)), key=lambda f: (f["medio"], f["fecha"]))
+    excepciones.anotar_filas_clp(observaciones)  # tipo de excepción y acción sugerida (pantalla y Excel)
     orden = {"diferencia": 0, "sin_registro": 1, "conciliado": 2, "fuera_periodo": 3}
     observaciones.sort(key=lambda f: (orden[f["estado"]], not f["observacion"], f["medio"], f["fecha"]))
 
@@ -1071,6 +1072,7 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
         "archivos_usados": _archivos_usados(archivos, liquidaciones),
         "parametros": parametros.como_dict(),
         "cuotas": cuotas,
+        "excepciones": excepciones.desde_clp(observaciones, cuotas),
         "graficos": graficos.datos_clp(ventas, pendientes_bordero, _por_revisar, con_observacion, ORDEN_MEDIOS),
     }
     reportes = [
@@ -1106,6 +1108,7 @@ def _fila_venta(v):
         "estado_texto": ESTADOS[v["estado"]],
         "nota": v["nota"],
         "observacion": con_observacion(v),
+        "tipo": v.get("tipo", ""),
     }
 
 
@@ -1125,6 +1128,8 @@ COLUMNAS_VENTAS = [
     ("Diferencia", "diferencia", 13), ("Documento BORDERO", "documento_bordero", 18), ("Cód. BORDERO", "cod_bordero", 12),
     ("Estado", "estado_texto", 28), ("Observación", "nota", 40),
 ]
+# «Por revisar»: además, el tipo de excepción y la acción sugerida (CU-04).
+COLUMNAS_POR_REVISAR = COLUMNAS_VENTAS + [("Tipo de excepción", "excepcion", 28), ("Acción sugerida", "accion_sugerida", 70)]
 
 
 def _hoja_tabla(ws, titulo, columnas, filas, subtitulo=None):
@@ -1160,11 +1165,11 @@ def _guardar(wb):
     return salida.getvalue()
 
 
-def _excel_ventas(titulo, filas):
+def _excel_ventas(titulo, filas, columnas=COLUMNAS_POR_REVISAR):
     wb = Workbook()
     ws = wb.active
     ws.title = "Ventas"
-    _hoja_tabla(ws, titulo, COLUMNAS_VENTAS, filas)
+    _hoja_tabla(ws, titulo, columnas, filas)
     return _guardar(wb)
 
 

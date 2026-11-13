@@ -1,0 +1,62 @@
+{# Una excepción con su acción sugerida y su gestión. Variables: e, volver (url), con_conciliacion (bool). #}
+<article class="excepcion excepcion--{% if e.vigente %}{{ e.estado }}{% else %}reemplazada{% endif %}" id="excepcion-{{ e.pk }}" data-estado="{% if e.vigente %}{{ e.estado }}{% else %}reemplazada{% endif %}">
+    <div class="excepcion__cabeza">
+        <span class="etiqueta etiqueta--excepcion categoria--{{ e.categoria }}">{{ e.get_categoria_display }}</span>
+        {% if e.reclasificada %}<span class="etiqueta" title="Tipo automático: {{ e.get_categoria_auto_display }}">Reclasificada</span>{% endif %}
+        {% if e.vigente %}<span class="estado-excepcion estado-excepcion--{{ e.estado }}">{{ e.get_estado_display }}</span>
+        {% else %}<span class="estado-excepcion">Se gestiona en la N° {{ e.reemplazada_por_id }}</span>{% endif %}
+    </div>
+    <div class="excepcion__datos">
+        <p class="excepcion__venta">
+            <strong class="num">{{ e.codigo|default:"Sin código" }}</strong>
+            {% if e.fecha %}<span class="num">{{ e.fecha|date:"d-m-Y" }}</span>{% endif %}
+            {% if e.medio %}<span>{{ e.medio }}</span>{% endif %}
+        </p>
+        {% if e.monto is not None %}
+        <dl class="excepcion__montos">
+            <div><dt>Transbank</dt><dd class="num">{{ e.simbolo }} {{ e.monto|floatformat:"-2g" }}</dd></div>
+            {% if e.monto_registro is not None %}<div><dt>{% if e.conciliacion.moneda == 'CLP' %}BORDERO{% else %}Cartola{% endif %}</dt><dd class="num">{{ e.simbolo }} {{ e.monto_registro|floatformat:"-2g" }}</dd></div>{% endif %}
+            {% if e.diferencia %}<div><dt>Diferencia</dt><dd class="num excepcion__diferencia">{{ e.simbolo }} {{ e.diferencia|floatformat:"-2g" }}</dd></div>{% endif %}
+        </dl>
+        {% endif %}
+        {% if con_conciliacion %}<a class="excepcion__conciliacion" href="{{ e.get_absolute_url }}">Conciliación N° {{ e.conciliacion_id }} ({{ e.conciliacion.get_moneda_display|lower }})</a>{% endif %}
+    </div>
+    <p class="excepcion__sugerencia"><i data-lucide="lightbulb" aria-hidden="true"></i><span><strong>Acción sugerida:</strong> {{ e.sugerencia }}</span></p>
+    {% if e.comentario or e.actualizada %}
+    <p class="excepcion__comentario">
+        {% if e.comentario %}«{{ e.comentario }}» {% endif %}<span>{% if e.actualizada_por %}{{ e.actualizada_por.get_full_name|default:e.actualizada_por.username }}, {% endif %}{{ e.actualizada|date:"d-m-Y H:i" }}</span>
+    </p>
+    {% endif %}
+    {% if not e.vigente %}
+    <p class="excepcion__reemplazada">Esta venta se volvió a conciliar. <a href="{% url 'conciliacion:detalle' e.reemplazada_por_id %}#excepciones">Ver en la conciliación N° {{ e.reemplazada_por_id }}</a></p>
+    {% elif puede_conciliar %}
+    <details class="excepcion__gestion">
+        <summary><i data-lucide="pencil" aria-hidden="true"></i> Gestionar</summary>
+        <form method="post" action="{% url 'conciliacion:gestionar_excepcion' e.pk %}" class="excepcion__formulario">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ volver }}">
+            <fieldset class="segmentado">
+                <legend class="campo__etiqueta">Estado</legend>
+                <div class="segmentado__opciones">
+                    {% for valor, texto in estados_excepcion %}
+                    <label class="segmentado__opcion"><input type="radio" name="estado" value="{{ valor }}"{% if e.estado == valor %} checked{% endif %}><span>{{ texto }}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+            <div class="campo">
+                <label class="campo__etiqueta" for="categoria-{{ e.pk }}">Tipo de excepción</label>
+                <select class="entrada" id="categoria-{{ e.pk }}" name="categoria">
+                    {% for valor, texto in categorias_excepcion %}<option value="{{ valor }}"{% if e.categoria == valor %} selected{% endif %}>{{ texto }}{% if valor == e.categoria_auto %} (automático){% endif %}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="campo excepcion__campo-comentario">
+                <label class="campo__etiqueta" for="comentario-{{ e.pk }}">Comentario <span class="tenue">(obligatorio si cambias el tipo)</span></label>
+                <textarea class="entrada" id="comentario-{{ e.pk }}" name="comentario" rows="2" maxlength="1000" placeholder="Qué se revisó o corrigió, número de documento, etc.">{{ e.comentario }}</textarea>
+            </div>
+            <div class="excepcion__botones">
+                <button type="submit" class="boton boton--principal"><i data-lucide="save" aria-hidden="true"></i> Guardar</button>
+            </div>
+        </form>
+    </details>
+    {% endif %}
+</article>

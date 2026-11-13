@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from .models import Conciliacion, Reporte
+from .models import Conciliacion, Excepcion, Reporte
 
 
 def _a_json(valor):
@@ -41,6 +41,8 @@ def _descripcion_archivos(archivos, nombres):
 @transaction.atomic
 def guardar(moneda, usuario, archivos, nombres, resultado, reportes, cuadrado, por_revisar):
     desde, hasta = resultado.get("periodo") or (None, None)
+    resultado = dict(resultado)
+    casos = resultado.pop("excepciones", [])  # se guardan aparte, con su gestión
     registro = Conciliacion.objects.create(
         moneda=moneda,
         usuario=usuario if getattr(usuario, "is_authenticated", False) else None,
@@ -56,4 +58,5 @@ def guardar(moneda, usuario, archivos, nombres, resultado, reportes, cuadrado, p
                 nombre_archivo=nombre, contenido=contenido, orden=i)
         for i, (clave, titulo, descripcion, nombre, contenido) in enumerate(reportes)
     ])
+    Excepcion.crear_para(registro, casos)
     return registro

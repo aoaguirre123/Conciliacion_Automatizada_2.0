@@ -31,7 +31,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font
 
-from . import graficos, lectura, logica_clp
+from . import excepciones, graficos, lectura, logica_clp
 from .bines import identificar_local
 from .parametros import Parametros
 
@@ -860,6 +860,9 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
             _, resultado["resumen"]["erp_repetidos"], resultado["resumen"]["filas_erp_repetidas"] = lector._tablas["erp"]
         resultado["archivos_usados"] = [NOMBRES_ARCHIVO[c] for c, a in archivos.items() if a]
         resultado["periodo"] = _periodo(archivos, lector, identificar)
+        resultado["excepciones"] = excepciones.desde_usd(
+            informacion_proceso, MARCA_GRAFICO.get, _num, logica_clp._fecha
+        )
         resultado["graficos"] = graficos.datos_usd(
             informacion_proceso, MARCA_GRAFICO.get, _num, logica_clp._fecha
         )

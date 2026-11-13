@@ -3751,3 +3751,346 @@ details[open] > summary .plegable__mas svg {
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* Excepciones (CU-04) ------------------------------------------------------------ */
+.excepciones {
+    display: grid;
+    gap: 1rem;
+}
+
+.excepciones > .tarjeta__cabeza {
+    margin-bottom: 0;
+}
+
+.excepciones__lista {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.excepcion {
+    background: var(--superficie);
+    border: 1px solid var(--linea);
+    border-left: 4px solid var(--estado-excepcion, var(--linea-fuerte));
+    border-radius: var(--radio-md);
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.9rem 1.1rem;
+    scroll-margin-top: calc(var(--alto-cabecera) + 1rem);
+    transition: box-shadow 0.2s ease;
+}
+
+.excepcion[hidden] {
+    display: none;
+}
+
+.excepcion:hover {
+    box-shadow: var(--sombra-alta);
+}
+
+.excepcion--pendiente { --estado-excepcion: var(--rojo); }
+.excepcion--en_revision { --estado-excepcion: var(--grafico-aviso); }
+.excepcion--resuelta { --estado-excepcion: var(--grafico-ok); }
+
+.excepcion--marcada {
+    box-shadow: var(--foco);
+}
+
+.excepcion__cabeza {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.etiqueta--excepcion {
+    background: var(--azul-100);
+    border-color: transparent;
+    color: var(--titulo);
+}
+
+.estado-excepcion {
+    align-items: center;
+    color: var(--estado-texto, var(--tinta-media));
+    display: inline-flex;
+    font-size: var(--t-xs);
+    font-weight: 700;
+    gap: 0.35rem;
+    margin-left: auto;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.estado-excepcion::before {
+    background: currentColor;
+    border-radius: 50%;
+    content: "";
+    height: 8px;
+    width: 8px;
+}
+
+.estado-excepcion--pendiente { --estado-texto: var(--rojo-texto); }
+.estado-excepcion--en_revision { --estado-texto: var(--ambar-texto); }
+.estado-excepcion--resuelta { --estado-texto: var(--verde-texto); }
+
+.excepcion__venta {
+    align-items: baseline;
+    color: var(--tinta-media);
+    display: flex;
+    flex-wrap: wrap;
+    font-size: var(--t-sm);
+    font-weight: 400;
+    gap: 0.25rem 0.9rem;
+    margin: 0;
+}
+
+.excepcion__venta strong {
+    color: var(--tinta);
+    font-size: var(--t-md);
+}
+
+.excepcion__venta a {
+    margin-left: auto;
+}
+
+.excepcion__montos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.5rem;
+    margin: 0;
+}
+
+.excepcion__montos div {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.excepcion__montos dt {
+    color: var(--tinta-suave);
+    font-size: var(--t-sm);
+}
+
+.excepcion__montos dd {
+    font-size: var(--t-sm);
+    font-weight: 600;
+    margin: 0;
+}
+
+.excepcion__diferencia {
+    color: var(--rojo-texto);
+}
+
+.excepcion__sugerencia {
+    align-items: flex-start;
+    background: var(--azul-50);
+    border-radius: var(--radio-sm);
+    display: flex;
+    font-size: var(--t-sm);
+    font-weight: 400;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0.55rem 0.75rem;
+}
+
+.excepcion__sugerencia svg {
+    color: var(--grafico-aviso);
+    flex: none;
+    height: 16px;
+    margin-top: 0.15rem;
+    width: 16px;
+}
+
+.excepcion__comentario {
+    color: var(--tinta);
+    font-size: var(--t-sm);
+    font-style: italic;
+    font-weight: 400;
+    margin: 0;
+}
+
+.excepcion__comentario span {
+    color: var(--tinta-suave);
+    font-size: var(--t-xs);
+    font-style: normal;
+}
+
+.excepcion__gestion > summary {
+    align-items: center;
+    color: var(--enlace);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: var(--t-sm);
+    font-weight: 600;
+    gap: 0.35rem;
+    list-style: none;
+}
+
+.excepcion__gestion > summary::-webkit-details-marker {
+    display: none;
+}
+
+.excepcion__gestion > summary svg {
+    height: 14px;
+    width: 14px;
+}
+
+.excepcion__gestion[open] > summary {
+    margin-bottom: 0.75rem;
+}
+
+.excepcion__formulario {
+    align-items: end;
+    border-top: 1px solid var(--linea);
+    display: grid;
+    gap: 0.75rem 1rem;
+    grid-template-columns: auto minmax(12rem, 1fr);
+    padding-top: 0.75rem;
+}
+
+.excepcion__campo-comentario {
+    grid-column: 1 / -1;
+}
+
+.excepcion__botones {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+}
+
+/* Control segmentado (estado de la excepción) */
+.segmentado {
+    border: 0;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.segmentado legend {
+    margin-bottom: 0.35rem;
+    padding: 0;
+}
+
+.segmentado__opciones {
+    display: flex;
+}
+
+.segmentado__opcion {
+    cursor: pointer;
+    display: block;
+}
+
+.segmentado__opcion input {
+    height: 1px;
+    opacity: 0;
+    position: absolute;
+    width: 1px;
+}
+
+.segmentado__opcion span {
+    border: 1px solid var(--linea-fuerte);
+    display: block;
+    font-size: var(--t-sm);
+    font-weight: 600;
+    min-height: 44px;
+    padding: 0.6rem 0.9rem;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.segmentado__opcion:first-of-type span {
+    border-radius: var(--radio-sm) 0 0 var(--radio-sm);
+}
+
+.segmentado__opcion:last-of-type span {
+    border-radius: 0 var(--radio-sm) var(--radio-sm) 0;
+}
+
+.segmentado__opcion + .segmentado__opcion span {
+    margin-left: -1px;
+}
+
+.segmentado__opcion input:checked + span {
+    background: var(--boton-principal);
+    border-color: var(--boton-principal);
+    color: #fff;
+}
+
+.segmentado__opcion input:focus-visible + span {
+    box-shadow: var(--foco);
+}
+
+.menu__contador {
+    background: var(--rojo);
+    border-radius: 999px;
+    color: #fff;
+    font-size: var(--t-xs);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    line-height: 1;
+    margin-left: auto;
+    padding: 0.25rem 0.5rem;
+}
+
+.tarjeta.aceptadas {
+    margin-top: 0;
+    padding: 0.9rem 1.25rem;
+}
+
+@media (max-width: 700px) {
+    .excepcion__formulario {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .segmentado__opcion span {
+        padding: 0.6rem 0.5rem;
+    }
+
+    .excepcion__venta a {
+        margin-left: 0;
+    }
+}
+
+/* Excepción compacta: datos de la venta y montos en una sola línea */
+.excepcion {
+    gap: 0.45rem;
+    padding: 0.75rem 1rem;
+}
+
+.excepcion__datos {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.5rem;
+}
+
+.excepcion__conciliacion {
+    font-size: var(--t-sm);
+    margin-left: auto;
+}
+
+.excepcion__sugerencia {
+    padding: 0.45rem 0.7rem;
+}
+
+.excepcion--reemplazada {
+    --estado-excepcion: var(--linea-fuerte);
+    opacity: 0.75;
+}
+
+.excepcion__reemplazada {
+    color: var(--tinta-media);
+    font-size: var(--t-sm);
+    font-weight: 400;
+    margin: 0;
+}
+
+/* Campos de texto con la misma tipografía que el resto */
+.entrada,
+select.entrada,
+textarea.entrada {
+    font: inherit;
+}
+
+textarea.entrada {
+    min-height: 4.5rem;
+    resize: vertical;
+}

@@ -5,6 +5,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 
+from . import excepciones as ex
 from . import parametros as p
 
 
@@ -140,3 +141,73 @@ class Configuracion(models.Model):
             ventana_dias=int(self.ventana_dias),
             palabras_cartola=p.separar_palabras(self.palabras_cartola) or p.PALABRAS_CARTOLA,
         )
+
+
+class Excepcion(models.Model):
+    """Un caso por revisar de una conciliación (CU-04), con su gestión.
+
+    La categoría y la acción sugerida se calculan al guardar la conciliación (excepciones.py).
+    El analista cambia el estado, deja un comentario y, si tiene antecedentes, reclasifica.
+    """
+
+    PENDIENTE, EN_REVISION, RESUELTA = "pendiente", "en_revision", "resuelta"
+
+    conciliacion = models.ForeignKey(Conciliacion, on_delete=models.CASCADE, related_name="excepciones")
+    orden = models.PositiveIntegerField(default=0)
+    categoria_auto = models.CharField("categoría automática", max_length=20, choices=ex.CATEGORIAS)
+    categoria = models.CharField("tipo de excepción", max_length=20, choices=ex.CATEGORIAS)
+    fecha = models.DateField(null=True, blank=True, help_text="Fecha de la venta.")
+    medio = models.CharField(max_length=40, blank=True, help_text="Medio de pago (pesos) o marca (dólares).")
+    codigo = models.CharField("código de autorización", max_length=40, blank=True)
+    monto = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    monto_registro = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True,
+                                         help_text="Monto en el BORDERO (pesos) o en la cartola de la tarjeta (dólares).")
+    diferencia = models.DecimalField(max_digits=16, decimal_places=2, null=True, blank=True)
+    detalle = models.CharField(max_length=300, blank=True, help_text="Observación del cruce.")
+    sugerencia = models.TextField("acción sugerida", blank=True)
+    estado = models.CharField(max_length=12, choices=ex.ESTADOS, default=PENDIENTE)
+    comentario = models.TextField(blank=True)
+    actualizada = models.DateTimeField(null=True, blank=True)
+    actualizada_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                        related_name="+")
+    # Si la misma venta vuelve a aparecer en una conciliación posterior, esa pasa a ser la vigente
+    # (hereda estado y comentario) y esta queda como antecedente.
+    vigente = models.BooleanField(default=True)
+    reemplazada_por = models.ForeignKey(Conciliacion, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["conciliacion", "orden"]
+        verbose_name = "excepción"
+        verbose_name_plural = "excepciones"
+        indexes = [models.Index(fields=["vigente", "estado", "categoria"])]
+
+    def __str__(self):
+        return f"{self.get_categoria_display()} {self.codigo} (conciliación N° {self.conciliacion_id})"
+
+    @property
+    def reclasificada(self):
+        return self.categoria != self.categoria_auto
+
+    @property
+    def simbolo(self):
+        return self.conciliacion.simbolo
+
+    def get_absolute_url(self):
+        return f"{self.conciliacion.get_absolute_url()}#excepcion-{self.pk}"
+
+    def caso(self):
+        """Datos para volver a armar la acción sugerida (excepciones.sugerencia_de) al reclasificar."""
+        def numero(valor):
+            return None if valor is None else float(valor)
+        return {
+            "moneda": self.conciliacion.moneda, "estado": "", "nota": self.detalle,
+            "fecha": self.fecha.strftime("%d-%m-%Y") if self.fecha else "", "medio": self.medio, "codigo": self.codigo,
+            "documento": "", "monto": numero(self.monto), "monto_registro": numero(self.monto_registro),
+            "diferencia": numero(self.diferencia),
+        }
+
+    @classmethod
+    def crear_para(cls, conciliacion, casos):
+        """Crea las excepciones de una conciliación a partir de excepciones.desde_clp / desde_usd."""
+        cls.objects.bulk_create([cls(**ex.campos_excepcion(conciliacion, i, c)) for i, c in enumerate(casos)])
+        ex.heredar_gestion(cls, conciliacion)
