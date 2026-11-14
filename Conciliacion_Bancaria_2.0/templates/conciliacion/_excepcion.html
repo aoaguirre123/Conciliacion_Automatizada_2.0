@@ -1,6 +1,7 @@
 {# Una excepción con su acción sugerida y su gestión. Variables: e, volver (url), con_conciliacion (bool). #}
 <article class="excepcion excepcion--{% if e.vigente %}{{ e.estado }}{% else %}reemplazada{% endif %}" id="excepcion-{{ e.pk }}" data-estado="{% if e.vigente %}{{ e.estado }}{% else %}reemplazada{% endif %}">
     <div class="excepcion__cabeza">
+        {% if puede_conciliar and e.vigente %}<input type="checkbox" class="seleccion" name="ids" value="{{ e.pk }}" form="form-masivo" data-seleccion-excepcion aria-label="Seleccionar la excepción {{ e.codigo|default:'sin código' }}">{% endif %}
         <span class="etiqueta etiqueta--excepcion categoria--{{ e.categoria }}">{{ e.get_categoria_display }}</span>
         {% if e.reclasificada %}<span class="etiqueta" title="Tipo automático: {{ e.get_categoria_auto_display }}">Reclasificada</span>{% endif %}
         {% if e.vigente %}<span class="estado-excepcion estado-excepcion--{{ e.estado }}">{{ e.get_estado_display }}</span>

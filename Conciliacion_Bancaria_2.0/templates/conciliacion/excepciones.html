@@ -13,30 +13,57 @@
         <h1>Excepciones</h1>
         <p class="encabezado__bajada">Los casos por revisar de todas las conciliaciones, clasificados y con una acción sugerida. Gestiónalos aquí o desde el detalle de cada conciliación.</p>
     </div>
+    {% include "conciliacion/_exportar_excepciones.html" with consulta_exportar=consulta %}
 </header>
 
 {% include "partials/mensajes.html" %}
 
-<div class="tarjeta filtro-fechas">
-    <div class="filtro-fechas__fila">
-        <div class="filtros filtros--sin-margen" role="group" aria-label="Estado">
-            {% for f in filtros_estado %}<a class="filtro{% if f.activo %} filtro--activo{% endif %}" href="?{{ f.consulta }}"{% if f.activo %} aria-current="true"{% endif %}>{{ f.texto }} ({{ f.n }})</a>{% endfor %}
-        </div>
-        <div class="filtros filtros--sin-margen" role="group" aria-label="Moneda">
-            <a class="filtro filtro--chico{% if not moneda %} filtro--activo{% endif %}" href="?{{ consulta_sin_moneda }}">Todas</a>
-            <a class="filtro filtro--chico{% if moneda == 'USD' %} filtro--activo{% endif %}" href="?{{ consulta_moneda.USD }}">Dólares</a>
-            <a class="filtro filtro--chico{% if moneda == 'CLP' %} filtro--activo{% endif %}" href="?{{ consulta_moneda.CLP }}">Pesos</a>
+<section class="tarjeta panel-filtros" aria-label="Filtros">
+    <div class="panel-filtros__fila">
+        <span class="panel-filtros__nombre" id="filtro-estado">Estado</span>
+        <div class="filtros filtros--sin-margen" role="group" aria-labelledby="filtro-estado">
+            {% for f in filtros_estado %}<a class="filtro{% if f.activo %} filtro--activo{% endif %}" href="?{{ f.consulta }}"{% if f.activo %} aria-current="true"{% endif %}>{{ f.texto }} <span class="filtro__n">{{ f.n }}</span></a>{% endfor %}
         </div>
     </div>
-    {% if filtros_categoria %}
-    <div class="filtros filtros--sin-margen" role="group" aria-label="Tipo de excepción">
-        {% for f in filtros_categoria %}<a class="filtro filtro--chico{% if f.activo %} filtro--activo{% endif %}" href="?{{ f.consulta }}"{% if f.activo %} aria-current="true"{% endif %}>{{ f.texto }} ({{ f.n }})</a>{% endfor %}
+    <div class="panel-filtros__fila">
+        <span class="panel-filtros__nombre" id="filtro-tipo">Tipo</span>
+        <div class="filtros filtros--sin-margen" role="group" aria-labelledby="filtro-tipo">
+            <a class="filtro{% if not categoria %} filtro--activo{% endif %}" href="?{{ consulta_sin_tipo }}"{% if not categoria %} aria-current="true"{% endif %}>Todos los tipos</a>
+            {% for f in filtros_categoria %}<a class="filtro{% if f.activo %} filtro--activo{% endif %}" href="?{{ f.consulta }}"{% if f.activo %} aria-current="true"{% endif %}>{{ f.texto }} <span class="filtro__n">{{ f.n }}</span></a>{% endfor %}
+        </div>
     </div>
-    {% endif %}
-</div>
+    <div class="panel-filtros__fila">
+        <span class="panel-filtros__nombre" id="filtro-moneda">Moneda</span>
+        <div class="filtros filtros--sin-margen" role="group" aria-labelledby="filtro-moneda">
+            <a class="filtro{% if not moneda %} filtro--activo{% endif %}" href="?{{ consulta_sin_moneda }}"{% if not moneda %} aria-current="true"{% endif %}>Pesos y dólares</a>
+            <a class="filtro{% if moneda == 'CLP' %} filtro--activo{% endif %}" href="?{{ consulta_moneda.CLP }}"{% if moneda == 'CLP' %} aria-current="true"{% endif %}>Pesos</a>
+            <a class="filtro{% if moneda == 'USD' %} filtro--activo{% endif %}" href="?{{ consulta_moneda.USD }}"{% if moneda == 'USD' %} aria-current="true"{% endif %}>Dólares</a>
+        </div>
+    </div>
+    <form method="get" class="panel-filtros__fila" aria-labelledby="filtro-fecha">
+        <span class="panel-filtros__nombre" id="filtro-fecha">Fecha de venta</span>
+        <div class="panel-filtros__fechas">
+            {% if estado != 'abiertas' %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+            {% if categoria %}<input type="hidden" name="categoria" value="{{ categoria }}">{% endif %}
+            {% if moneda %}<input type="hidden" name="moneda" value="{{ moneda }}">{% endif %}
+            <label class="oculto" for="exc-desde">Desde</label>
+            <input class="entrada" type="date" id="exc-desde" name="desde" value="{{ filtro.desde|date:'Y-m-d' }}">
+            <span class="panel-filtros__a" aria-hidden="true">a</span>
+            <label class="oculto" for="exc-hasta">Hasta</label>
+            <input class="entrada" type="date" id="exc-hasta" name="hasta" value="{{ filtro.hasta|date:'Y-m-d' }}">
+            <button type="submit" class="boton boton--secundario">Aplicar</button>
+            {% if con_fechas %}<a class="panel-filtros__quitar" href="?{{ consulta_sin_fechas }}">Quitar fechas</a>{% endif %}
+        </div>
+    </form>
+    <div class="panel-filtros__pie">
+        <p role="status"><strong>{{ pagina.paginator.count }} excepci{{ pagina.paginator.count|pluralize:"ón,ones" }}</strong> {{ texto_estado|lower }}{% if categoria %} · {{ texto_categoria }}{% endif %}{% if moneda %} · {% if moneda == 'CLP' %}pesos{% else %}dólares{% endif %}{% endif %}{% if con_fechas %} · ventas {% if filtro.desde and filtro.hasta %}del {{ filtro.desde|date:"d-m-Y" }} al {{ filtro.hasta|date:"d-m-Y" }}{% elif filtro.desde %}desde el {{ filtro.desde|date:"d-m-Y" }}{% else %}hasta el {{ filtro.hasta|date:"d-m-Y" }}{% endif %}{% endif %}</p>
+        {% if filtrado %}<a class="panel-filtros__quitar" href="{% url 'conciliacion:excepciones' %}">Limpiar filtros</a>{% endif %}
+    </div>
+</section>
 
 {% if pagina.object_list %}
-<div class="excepciones__lista">
+{% include "conciliacion/_excepciones_masivo.html" with volver=request.get_full_path %}
+<div class="excepciones__lista" data-excepciones-lista>
     {% for e in pagina %}
     {% include "conciliacion/_excepcion.html" with volver=request.get_full_path con_conciliacion=True %}
     {% endfor %}
@@ -50,7 +77,7 @@
 {% endif %}
 {% else %}
 <div class="tarjeta vacio">
-    <p>{% if estado == 'abiertas' %}No hay excepciones por gestionar{% else %}No hay excepciones «{{ texto_estado|lower }}»{% endif %}{% if categoria or moneda %} con este filtro{% endif %}.</p>
+    <p>{% if estado == 'abiertas' %}No hay excepciones por gestionar{% else %}No hay excepciones «{{ texto_estado|lower }}»{% endif %}{% if categoria or moneda or con_fechas %} con este filtro{% endif %}.</p>
 </div>
 {% endif %}
 {% endblock %}

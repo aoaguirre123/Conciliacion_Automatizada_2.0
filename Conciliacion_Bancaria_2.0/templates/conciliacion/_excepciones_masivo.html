@@ -1,0 +1,38 @@
+{# Cambiar el estado de varias excepciones a la vez. Variable: volver (url). Solo Analista y Administrador. #}
+{% if puede_conciliar %}
+<form method="post" action="{% url 'conciliacion:gestionar_varias' %}" id="form-masivo" class="masivo" data-masivo>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ volver }}">
+    <label class="masivo__todas">
+        <input type="checkbox" class="seleccion" data-seleccionar-excepciones>
+        <span>Seleccionar todas las que se ven</span>
+    </label>
+
+    <div class="masivo__barra" data-masivo-barra hidden>
+        <span class="masivo__cuenta" aria-live="polite"><strong data-masivo-n>0</strong> seleccionada<span data-masivo-plural>s</span></span>
+        <button type="button" class="boton boton--secundario" data-masivo-limpiar>Quitar selección</button>
+        <button type="button" class="boton boton--principal" data-masivo-abrir><i data-lucide="list-checks" aria-hidden="true"></i> Cambiar estado…</button>
+    </div>
+
+    <dialog class="masivo__ventana" data-masivo-ventana aria-labelledby="masivo-titulo">
+        <h2 id="masivo-titulo">Cambiar <span data-masivo-n>0</span> excepci<span data-masivo-plural-es>ones</span></h2>
+        <fieldset class="segmentado">
+            <legend class="campo__etiqueta">Nuevo estado</legend>
+            <div class="segmentado__opciones">
+                {% for valor, texto in estados_excepcion %}
+                <label class="segmentado__opcion"><input type="radio" name="estado" value="{{ valor }}" required{% if valor == 'resuelta' %} checked{% endif %}><span>{{ texto }}</span></label>
+                {% endfor %}
+            </div>
+        </fieldset>
+        <div class="campo">
+            <label class="campo__etiqueta" for="masivo-comentario">Observación para todas <span class="tenue">(opcional)</span></label>
+            <textarea class="entrada" id="masivo-comentario" name="comentario" rows="3" maxlength="1000" placeholder="Por ejemplo: corregidas en el ERP el 13-11."></textarea>
+            <p class="campo__ayuda">Se agrega al comentario que cada una ya tenga, sin borrarlo.</p>
+        </div>
+        <div class="masivo__botones">
+            <button type="button" class="boton boton--secundario" data-masivo-cerrar>Cancelar</button>
+            <button type="submit" class="boton boton--principal"><i data-lucide="save" aria-hidden="true"></i> Aplicar a todas</button>
+        </div>
+    </dialog>
+</form>
+{% endif %}

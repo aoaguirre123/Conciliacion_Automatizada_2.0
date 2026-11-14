@@ -106,7 +106,7 @@ Módulo central encargado del procesamiento, lógica de negocio y presentación 
 <a id="estado-actual" name="estado-actual"></a>
 ## 🚦 Estado Actual del Desarrollo
 
-La versión vigente del sistema es **Conciliación bancaria v3.9.0**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
+La versión vigente del sistema es **Conciliación bancaria v3.12.0**, desarrollada como aplicación web Django con plantillas HTML y base de datos SQLite. El código se encuentra en la carpeta `Conciliacion_Bancaria_2.0/`, en la raíz del repositorio.
 
 #### Módulos Disponibles
 * **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**, en uno o varios archivos) contra los pagos con tarjeta del **BORDERO** por código de autorización y monto, con verificación del abono en la cartola de **BancoEstado** o **Banco de Chile**. Detecta diferencias de monto, ventas sin registro, ventas fuera del período, errores de digitación del código y datos duplicados. Reconoce las **ventas en cuotas**: cada venta se cruza una sola vez con el BORDERO y se informan las cuotas que no vienen en los reportes cargados, con el mes en que se esperaban, para volver a conciliar con un período más amplio. Al soltar los archivos muestra qué fechas de venta trae cada reporte de Transbank, y los **pagos del BORDERO sin abono** se limitan a esas fechas (crédito y débito por separado), indicando cuántos pagos de otras fechas se omitieron.
@@ -114,6 +114,7 @@ La versión vigente del sistema es **Conciliación bancaria v3.9.0**, desarrolla
 * **Historial:** Registro de todas las conciliaciones guardadas, con su resultado y los reportes Excel descargables.
 * **Identificación de Tarjetas:** Cada venta se identifica por los **6 primeros dígitos (BIN)** de la tarjeta: **marca, tipo (crédito, débito o prepago), banco emisor y país**, sin depender de internet. En dólares se usa para saber la marca de cada venta.
 * **Gestión de excepciones:** Cada caso por revisar se clasifica (error de digitación, diferencia de monto, venta sin registro, anulación, cuota diferida, etc.) con una acción sugerida; el analista lo marca en revisión o resuelto, comenta y puede reclasificarlo.
+* **Reporte de excepciones:** Exportación en PDF ejecutivo o Excel, de una conciliación o de todas, con código, monto, estado y acción sugerida.
 * **Dónde mirar primero:** Cada conciliación muestra un resumen gráfico con frases que indican por dónde empezar, cómo quedaron las ventas, el monto por revisar por medio de pago o marca y por día de venta, y las ventas con más monto por revisar.
 * **Configuración:** Pantalla para administradores donde se ajustan la **tolerancia de montos** en pesos (hasta $1.000) y en dólares (hasta US$ 5), la **ventana de días** entre la venta y el pago, y las **palabras clave** que identifican los abonos de Transbank en la cartola. Los valores fuera de rango se rechazan y cada conciliación guarda los criterios con que se hizo.
 * **Usuarios y perfiles:** Inicio de sesión por correo; todas las pantallas requieren sesión. Tres perfiles: **Administrador**, **Analista de Tesorería** y **Contador / Auditor**, administrados desde la pantalla **Usuarios**.

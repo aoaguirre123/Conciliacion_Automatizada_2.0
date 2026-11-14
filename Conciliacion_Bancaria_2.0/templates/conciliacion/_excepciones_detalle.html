@@ -1,11 +1,18 @@
 {# Excepciones de una conciliación (CU-04), en su detalle. #}
-<article class="tarjeta excepciones" id="excepciones" data-excepciones>
-    <div class="tarjeta__cabeza cabeza-con-accion">
-        <div>
+<details class="tarjeta seccion-plegable excepciones" id="excepciones" data-excepciones>
+    <summary class="seccion-plegable__cabeza">
+        <span class="seccion-plegable__textos">
             <h2>Excepciones</h2>
-            <p class="tarjeta__bajada">Cada caso por revisar con su tipo y una acción sugerida. {% if puede_conciliar %}Márcalos en revisión o resueltos a medida que los gestionas; si tienes antecedentes, cambia el tipo.{% else %}Tu perfil puede verlas, pero no cambiarlas.{% endif %}</p>
+            <span class="tarjeta__bajada">{% if lista_excepciones %}{{ excepciones_por_estado.pendiente|add:excepciones_por_estado.en_revision }} por gestionar · {{ excepciones_por_estado.resuelta }} resuelta{{ excepciones_por_estado.resuelta|pluralize }} · {{ lista_excepciones|length }} en total{% if excepciones_reemplazadas %} ({{ excepciones_reemplazadas }} conciliada{{ excepciones_reemplazadas|pluralize }} de nuevo){% endif %}{% elif excepciones_antiguas %}Sin detalle en esta conciliación (versión anterior){% else %}No hay excepciones: todas las ventas están conciliadas{% endif %}</span>
+        </span>
+        <span class="seccion-plegable__accion" aria-hidden="true"><span class="seccion-plegable__ver">Ver</span><span class="seccion-plegable__ocultar">Ocultar</span><i data-lucide="chevron-down"></i></span>
+    </summary>
+    <div class="excepciones__cabeza">
+        <p class="tarjeta__bajada">Cada caso por revisar con su tipo y una acción sugerida. {% if puede_conciliar %}Márcalos en revisión o resueltos a medida que los gestionas; si tienes antecedentes, cambia el tipo.{% else %}Tu perfil puede verlas, pero no cambiarlas.{% endif %}</p>
+        <div class="excepciones__acciones">
+            {% include "conciliacion/_exportar_excepciones.html" with consulta_exportar=consulta_exportar_conciliacion %}
+            {% if lista_excepciones %}<a href="{% url 'conciliacion:excepciones' %}">Ver todas las excepciones</a>{% endif %}
         </div>
-        {% if lista_excepciones %}<a href="{% url 'conciliacion:excepciones' %}">Ver todas las excepciones</a>{% endif %}
     </div>
     {% if lista_excepciones %}
     <div class="filtros filtros--sin-margen" role="group" aria-label="Filtrar excepciones por estado">
@@ -14,7 +21,8 @@
         <button type="button" class="filtro" data-filtro-excepcion="todas" aria-pressed="false">Todas ({{ lista_excepciones|length }})</button>
         {% if excepciones_reemplazadas %}<button type="button" class="filtro" data-filtro-excepcion="reemplazada" aria-pressed="false">Conciliadas de nuevo ({{ excepciones_reemplazadas }})</button>{% endif %}
     </div>
-    <div class="excepciones__lista">
+    {% include "conciliacion/_excepciones_masivo.html" with volver=request.get_full_path %}
+    <div class="excepciones__lista" data-excepciones-lista>
         {% for e in lista_excepciones %}
         {% include "conciliacion/_excepcion.html" with volver=request.get_full_path con_conciliacion=False %}
         {% endfor %}
@@ -25,4 +33,4 @@
     {% else %}
     <p class="vacio">No hay excepciones: todas las ventas están conciliadas.</p>
     {% endif %}
-</article>
+</details>

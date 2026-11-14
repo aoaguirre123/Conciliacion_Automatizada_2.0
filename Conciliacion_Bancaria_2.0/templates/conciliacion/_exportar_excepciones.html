@@ -1,0 +1,10 @@
+{# Botones de exportación del reporte de excepciones (CU-05). Variable: consulta_exportar (filtros en la URL). #}
+<div class="exportar" role="group" aria-label="Exportar reporte de excepciones">
+    <span class="exportar__titulo">Exportar reporte</span>
+    <a class="boton boton--secundario" href="{% url 'conciliacion:exportar_excepciones' %}?{% if consulta_exportar %}{{ consulta_exportar }}&amp;{% endif %}formato=pdf">
+        <i data-lucide="file-text" aria-hidden="true"></i> PDF ejecutivo
+    </a>
+    <a class="boton boton--secundario" href="{% url 'conciliacion:exportar_excepciones' %}?{% if consulta_exportar %}{{ consulta_exportar }}&amp;{% endif %}formato=xlsx">
+        <i data-lucide="file-spreadsheet" aria-hidden="true"></i> Excel
+    </a>
+</div>

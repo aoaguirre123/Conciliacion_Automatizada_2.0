@@ -44,6 +44,26 @@
 
 {% include "partials/mensajes.html" %}
 
+<article class="tarjeta documentos">
+    <div class="tarjeta__cabeza">
+        <h2>Descargar documentos</h2>
+        <p class="tarjeta__bajada">Quedan guardados con esta conciliación: puedes volver a bajarlos cuando quieras, en Excel o en PDF.</p>
+    </div>
+    <div class="descargas">
+        {% for r in reportes %}
+        <div class="descarga">
+            <span class="descarga__icono"><i data-lucide="file-spreadsheet" aria-hidden="true"></i></span>
+            <span class="descarga__titulo">{{ r.titulo }}</span>
+            <span class="descarga__texto">{{ r.descripcion }}</span>
+            <span class="descarga__formatos">
+                <a class="descarga__formato descarga__formato--excel" href="{{ r.get_absolute_url }}" aria-label="Descargar {{ r.titulo }} en Excel">Excel</a>
+                <a class="descarga__formato descarga__formato--pdf" href="{% url 'conciliacion:descargar_pdf' conciliacion.pk r.clave %}" aria-label="Descargar {{ r.titulo }} en PDF">PDF</a>
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+</article>
+
 <details class="tarjeta tarjeta--compacta seccion-plegable archivos-usados">
         <summary class="seccion-plegable__cabeza">
             <span class="seccion-plegable__textos">
@@ -65,19 +85,5 @@
     {% include "conciliacion/_resultado_usd.html" %}
 {% endif %}
 
-<article class="tarjeta separado-arriba">
-    <div class="tarjeta__cabeza">
-        <h2>Descargar detalle en Excel</h2>
-        <p class="tarjeta__bajada">Los archivos quedan guardados con esta conciliación: puedes volver a bajarlos cuando quieras.</p>
-    </div>
-    <div class="descargas">
-        {% for r in reportes %}
-        <a class="descarga" href="{{ r.get_absolute_url }}">
-            <span class="descarga__icono"><i data-lucide="file-spreadsheet" aria-hidden="true"></i></span>
-            <span class="descarga__titulo">{{ r.titulo }}</span>
-            <span class="descarga__texto">{{ r.descripcion }}</span>
-        </a>
-        {% endfor %}
-    </div>
-</article>
+
 {% endblock %}

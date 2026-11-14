@@ -79,7 +79,7 @@ existían quedan como Administrador (si eran staff) o Analista de Tesorería.
 
 ## Cómo comprobar que estás viendo esta versión
 
-El pie de página dice **Conciliación bancaria v3.9.0**.
+El pie de página dice **Conciliación bancaria v3.12.0**.
 
 ## Al actualizar desde una versión anterior
 
@@ -129,15 +129,25 @@ Tus usuarios y el historial se mantienen.
   anulación o nota de crédito, cuota diferida no encontrada) con una acción sugerida armada con
   sus datos (`apps/conciliacion/excepciones.py`). El analista o el administrador la marca
   pendiente, en revisión o resuelta, deja un comentario y puede reclasificarla (con comentario
-  obligatorio). Si el mismo período se concilia de nuevo, la excepción nueva hereda la gestión de
+  obligatorio). También se pueden marcar varias y cambiarles el estado de una vez, con una
+  observación que se agrega al comentario de cada una. Si el mismo período se concilia de nuevo, la excepción nueva hereda la gestión de
   la anterior y esta deja de contar. El Excel «Por revisar» trae el tipo y la acción sugerida.
   La migración `0006_excepciones` crea las excepciones de las conciliaciones en pesos ya guardadas.
+- **Documentos en PDF**: en el detalle de cada conciliación, cada documento (Conciliación completa,
+  Por revisar, BORDERO sin abono, y los de dólares) se baja en Excel o en PDF
+  (`apps/conciliacion/pdf_documentos.py`, convierte los Excel guardados sin necesitar Excel).
+- **Exportar reporte de excepciones** (CU-05): botones «PDF ejecutivo» y «Excel» en el módulo
+  Excepciones (con los filtros de estado, tipo, moneda y fechas de venta) y en el detalle de cada
+  conciliación (`apps/conciliacion/reporte_excepciones.py`). El PDF trae el resumen por estado y
+  por tipo, y el detalle con código, monto, estado, acción sugerida y comentario; el Excel trae
+  una hoja «Resumen» y una hoja «Excepciones» con todas las conciliaciones filtradas. Si no hay
+  excepciones, el reporte dice «Cuadratura 100 % limpia». Requiere `reportlab` (ver requirements).
 - **Dónde mirar primero** (en el resultado de cada conciliación y en su detalle del historial):
   frases que dicen por dónde empezar y gráficos de cómo quedaron las ventas (barra por estado),
   el monto por revisar por medio de pago o marca, el monto por revisar por día de venta y las
   ventas con más monto por revisar. Los totales se calculan al conciliar
   (`apps/conciliacion/graficos.py`) y se guardan con la conciliación; las conciliaciones
-  hechas antes de la v3.9.0 muestran lo que se puede armar con lo que guardaron.
+  hechas antes de la v3.11.6 muestran lo que se puede armar con lo que guardaron.
 - **Historial**: todas las conciliaciones guardadas, con su resultado y sus Excel.
   Se filtra por moneda y por fechas: por **período conciliado** (las que tienen al menos un día
   de ventas dentro del rango) o por **fecha en que se hizo**, con atajos (este mes, mes anterior,

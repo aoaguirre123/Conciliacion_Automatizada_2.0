@@ -1598,16 +1598,16 @@ class ClasificarExcepcionesTests(SimpleTestCase):
     def test_cada_caso_recibe_su_tipo_y_una_accion_con_sus_datos(self):
         e = self.categoria()
         self.assertEqual(e["categoria"], "sin_registro")
-        self.assertIn("La venta 425788 del 04-09-2026 por $ 663.663 no está en el BORDERO", e["sugerencia"])
+        self.assertEqual(e["sugerencia"], "Registrar la venta en el BORDERO.")
 
         e = self.categoria(estado="diferencia", monto=115204, monto_bordero=113700, diferencia=1504, nota="Mismo código, distinto monto")
         self.assertEqual(e["categoria"], "monto_distinto")
-        self.assertIn("Transbank informa $ 115.204 y el BORDERO $ 113.700 (diferencia $ 1.504)", e["sugerencia"])
+        self.assertEqual(e["sugerencia"], "Corregir el monto en el BORDERO o registrar el ajuste.")
 
         e = self.categoria(estado="conciliado", nota="Código digitado distinto en el BORDERO", autorizacion="HCOVGZ",
                            documento_bordero="HC0VGZ")
         self.assertEqual(e["categoria"], "digitacion")
-        self.assertIn("en Transbank es HCOVGZ y en el BORDERO quedó HC0VGZ", e["sugerencia"])
+        self.assertEqual(e["sugerencia"], "Corregir el código en el BORDERO: dice HC0VGZ, debe ser HCOVGZ.")
 
         self.assertEqual(self.categoria(estado="conciliado", nota="Cruzado por monto y fecha: revisar código")["categoria"], "codigo_distinto")
         self.assertEqual(self.categoria(estado="conciliado", nota="Mismo código y monto en otra fecha: revisar")["categoria"], "fecha_distinta")
@@ -1616,13 +1616,13 @@ class ClasificarExcepcionesTests(SimpleTestCase):
 
     def test_diferencia_menor_sugiere_revisar_la_tolerancia(self):
         e = self.categoria(estado="diferencia", monto=10050, monto_bordero=10000, diferencia=50)
-        self.assertIn("probablemente redondeo", e["sugerencia"])
+        self.assertEqual(e["sugerencia"], "Probable redondeo: evaluar subir la tolerancia.")
         usd = excepciones.desde_usd(
             [{"estado": "diferencia", "nota": "Diferencia de monto", "fecha_venta": "25/11/2025", "tipo_tarjeta": "VI",
               "codigo_autorizacion": "112194", "documento": "7001", "monto_original": 116, "monto_cartola": 116.11,
               "diferencia": -0.11}],
             {"VI": "Visa"}.get, float, logica_clp._fecha)[0]
-        self.assertIn("la cartola de Visa US$ 116,11 (diferencia -US$ 0,11)", usd["sugerencia"])
+        self.assertEqual(usd["sugerencia"], "Probable redondeo: evaluar subir la tolerancia.")
 
     def test_las_diferencias_aceptadas_no_son_excepciones(self):
         filas = [self.fila(estado="conciliado", nota="Diferencia de redondeo")]
@@ -1633,7 +1633,7 @@ class ClasificarExcepcionesTests(SimpleTestCase):
                               "faltantes": [{"cuota": "2/3", "mes": "Octubre 2026", "en_periodo": False}]}]}
         e = excepciones.desde_clp([], cuotas)[0]
         self.assertEqual(e["categoria"], "cuota_diferida")
-        self.assertIn("La cuota 2/3 se espera en octubre 2026, fuera de los reportes cargados", e["sugerencia"])
+        self.assertEqual(e["sugerencia"], "Conciliar de nuevo incluyendo octubre 2026.")
 
     def test_el_motor_en_pesos_entrega_las_excepciones_y_el_excel_trae_la_accion(self):
         ventas = VENTAS_MIXTAS + [("Débito", 7000, 70, "000999", "9009")]
@@ -1643,7 +1643,7 @@ class ClasificarExcepcionesTests(SimpleTestCase):
         hoja = load_workbook(io.BytesIO(excel)).active
         textos = [c.value for fila in hoja.iter_rows() for c in fila if c.value]
         self.assertIn("Acción sugerida", textos)
-        self.assertTrue(any(isinstance(t, str) and t.startswith("La venta 000999") for t in textos))
+        self.assertIn("Registrar la venta en el BORDERO.", textos)
 
 
 class GestionExcepcionesTests(TestCase):
@@ -1688,7 +1688,7 @@ class GestionExcepcionesTests(TestCase):
         self.e.refresh_from_db()
         self.assertEqual(self.e.categoria, "anulacion")
         self.assertTrue(self.e.reclasificada)
-        self.assertIn("anulación o nota de crédito", self.e.sugerencia)
+        self.assertEqual(self.e.sugerencia, "Verificar que la venta y su anulación estén en el BORDERO.")
 
     def test_el_contador_ve_pero_no_gestiona(self):
         contador = User.objects.create_user("conta", "conta@hotel.cl", "Clave-Prueba-2026")
@@ -1701,8 +1701,9 @@ class GestionExcepcionesTests(TestCase):
 
     def test_modulo_general_con_filtros(self):
         pagina = self.client.get("/conciliacion/excepciones/")
-        self.assertContains(pagina, "Por gestionar (1)")
-        self.assertContains(pagina, "Venta sin registro contable (1)")
+        self.assertContains(pagina, 'Por gestionar <span class="filtro__n">1</span>')
+        self.assertContains(pagina, 'Venta sin registro contable <span class="filtro__n">1</span>')
+        self.assertContains(pagina, "1 excepción</strong> por gestionar")
         self.assertContains(pagina, f"Conciliación N° {self.c.pk}")
         self.gestionar(estado="resuelta")
         self.assertContains(self.client.get("/conciliacion/excepciones/"), "No hay excepciones por gestionar")
@@ -1742,10 +1743,193 @@ class ExcepcionesAlConciliarDeNuevoTests(TestCase):
         self.assertEqual(Excepcion.objects.filter(vigente=True).count(), 1)
 
         self.client.force_login(usuario)
-        self.assertContains(self.client.get("/conciliacion/excepciones/"), "Por gestionar (1)")
+        self.assertContains(self.client.get("/conciliacion/excepciones/"), 'Por gestionar <span class="filtro__n">1</span>')
         detalle_viejo = self.client.get(primera.get_absolute_url())
         self.assertContains(detalle_viejo, f"Ver en la conciliación N° {segunda.pk}")
         # Gestionar la antigua lleva a la vigente.
         respuesta = self.client.post(f"/conciliacion/excepciones/{vieja.pk}/gestionar/",
                                      {"estado": "resuelta", "categoria": vieja.categoria, "comentario": ""})
         self.assertRedirects(respuesta, segunda.get_absolute_url(), fetch_redirect_response=False)
+
+
+class ExportarExcepcionesTests(TestCase):
+    """CU-05: reporte de excepciones en PDF ejecutivo y Excel multilote."""
+
+    def setUp(self):
+        from apps.usuarios import perfiles
+        self.contador = User.objects.create_user("conta", "conta@hotel.cl", "Clave-Prueba-2026")
+        perfiles.asignar_perfil(self.contador, perfiles.CONSULTA)  # el actor del CU-05 es el Contador
+        self.client.force_login(self.contador)
+        resultado = logica_clp.procesar({
+            "bordero": bordero_clp(PAGOS_MIXTOS),
+            "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS + [("Débito", 7000, 70, "000999", "9009")])],
+        })
+        self.c = registro.guardar(Conciliacion.PESOS, self.contador, {}, {}, *resultado, False, 7000)
+
+    def exportar(self, **params):
+        return self.client.get("/conciliacion/excepciones/exportar/", params)
+
+    def test_pdf_de_una_conciliacion(self):
+        respuesta = self.exportar(conciliacion=self.c.pk, estado="todas", formato="pdf")
+        self.assertEqual(respuesta["Content-Type"], "application/pdf")
+        self.assertIn(f'excepciones_conciliacion_{self.c.pk}.pdf', respuesta["Content-Disposition"])
+        self.assertTrue(respuesta.content.startswith(b"%PDF"))
+
+    def test_excel_multilote_con_codigo_monto_y_accion(self):
+        respuesta = self.exportar(formato="xlsx")
+        libro = load_workbook(io.BytesIO(respuesta.content))
+        self.assertEqual(libro.sheetnames, ["Resumen", "Excepciones"])
+        hoja = libro["Excepciones"]
+        encabezado = [c.value for c in hoja[1]]
+        fila = dict(zip(encabezado, [c.value for c in hoja[2]]))
+        self.assertEqual(fila["N° conciliación"], self.c.pk)
+        self.assertEqual(fila["Código autorización"], "000999")
+        self.assertEqual(fila["Monto Transbank"], 7000)
+        self.assertEqual(fila["Acción sugerida"], "Registrar la venta en el BORDERO.")
+
+    def test_sin_excepciones_dice_cuadratura_limpia(self):
+        respuesta = self.exportar(formato="xlsx", desde="2020-01-01", hasta="2020-01-31")
+        resumen = load_workbook(io.BytesIO(respuesta.content))["Resumen"]
+        textos = [c.value for fila in resumen.iter_rows() for c in fila if c.value]
+        self.assertTrue(any("Cuadratura 100 % limpia" in str(t) for t in textos))
+        self.assertTrue(self.exportar(formato="pdf", estado="resuelta").content.startswith(b"%PDF"))
+
+    def test_respeta_los_filtros(self):
+        resumen = load_workbook(io.BytesIO(self.exportar(formato="xlsx", estado="resuelta").content))["Excepciones"]
+        self.assertEqual(resumen.max_row, 2)  # solo la nota de cuadratura limpia
+        self.assertIn("Cuadratura 100 % limpia", resumen.cell(2, 1).value)
+
+    def test_botones_en_el_modulo_y_en_el_detalle(self):
+        self.assertContains(self.client.get("/conciliacion/excepciones/"), "formato=pdf")
+        self.assertContains(self.client.get(self.c.get_absolute_url()), f"conciliacion={self.c.pk}&amp;estado=todas&amp;formato=xlsx")
+
+    def test_conciliacion_inexistente(self):
+        respuesta = self.exportar(conciliacion=9999, formato="pdf", follow=True)
+        self.assertRedirects(respuesta, "/conciliacion/historial/")
+
+    def test_filtro_por_fecha_de_venta_en_el_modulo(self):
+        self.assertContains(self.client.get("/conciliacion/excepciones/", {"desde": "2026-09-01", "hasta": "2026-09-30"}), "000999")
+        self.assertContains(self.client.get("/conciliacion/excepciones/", {"desde": "2020-01-01", "hasta": "2020-01-31"}),
+                            "No hay excepciones por gestionar con este filtro")
+
+
+class DocumentosEnPdfTests(TestCase):
+    """Los documentos de cada conciliación también se bajan en PDF (uno o todos juntos)."""
+
+    def setUp(self):
+        self.usuario = User.objects.create_user("ana", "ana@hotel.cl", "Clave-Prueba-2026")
+        self.client.force_login(self.usuario)
+        resultado, reportes = logica_clp.procesar({
+            "bordero": bordero_clp(PAGOS_MIXTOS),
+            "transbank": [transbank("tbk.xlsx", VENTAS_MIXTAS + [("Débito", 7000, 70, "000999", "9009")])],
+        })
+        self.c = registro.guardar(Conciliacion.PESOS, self.usuario, {}, {}, resultado, reportes, False, 7000)
+
+    def test_un_documento_en_pdf(self):
+        respuesta = self.client.get(f"/conciliacion/historial/{self.c.pk}/descargar/por_revisar/pdf/")
+        self.assertEqual(respuesta["Content-Type"], "application/pdf")
+        self.assertIn(f"conciliacion_clp_por_revisar_{self.c.pk}.pdf", respuesta["Content-Disposition"])
+        self.assertTrue(respuesta.content.startswith(b"%PDF"))
+
+    def test_todos_los_documentos_en_un_pdf(self):
+        respuesta = self.client.get(f"/conciliacion/historial/{self.c.pk}/pdf/")
+        self.assertIn(f"conciliacion_pesos_{self.c.pk}.pdf", respuesta["Content-Disposition"])
+        self.assertTrue(respuesta.content.startswith(b"%PDF"))
+
+    def test_textos_y_sumas_del_excel(self):
+        from openpyxl import Workbook as Libro
+        from . import pdf_documentos
+        libro = Libro()
+        ws = libro.active
+        ws["A1"] = "Título"
+        ws.append([])
+        ws.append(["Medio", "monto_original"])
+        ws.append(["Débito", 1500])
+        ws.append(["Crédito", 2500])
+        ws.append(["Total", "=SUM(B4:B5)"])
+        ws["B4"].number_format = ws["B5"].number_format = ws["B6"].number_format = '"$"#,##0'
+        bloques = pdf_documentos._bloques(ws, "CLP")
+        self.assertEqual(bloques[0], ("titulo", "Título"))
+        tabla = bloques[1][1][0]
+        self.assertEqual(tabla[-1][1], ("$ 4.000", True))
+        self.assertEqual(pdf_documentos._encabezado("monto_original"), "Monto Transbank")
+
+    def test_botones_en_el_detalle(self):
+        pagina = self.client.get(self.c.get_absolute_url())
+        self.assertNotContains(pagina, "Todo en un PDF")
+        self.assertContains(pagina, f"/conciliacion/historial/{self.c.pk}/descargar/por_revisar/pdf/")
+
+    def test_sin_reportlab_avisa_en_vez_de_descargar_una_pagina(self):
+        import builtins
+        importar = builtins.__import__
+
+        def sin_reportlab(nombre, *args, **kwargs):
+            if nombre.startswith("reportlab") or nombre.endswith("pdf_documentos") or (args and args[2] and "pdf_documentos" in args[2]):
+                raise ImportError(nombre)
+            return importar(nombre, *args, **kwargs)
+
+        with mock.patch("builtins.__import__", side_effect=sin_reportlab):
+            respuesta = self.client.get(f"/conciliacion/historial/{self.c.pk}/pdf/")
+        self.assertRedirects(respuesta, self.c.get_absolute_url(), fetch_redirect_response=False)
+        self.assertContains(self.client.get(self.c.get_absolute_url()), "falta instalar la librería «reportlab»")
+
+    def test_el_aviso_nombra_la_libreria_que_falta(self):
+        from .views import _sin_pdf
+        self.assertIn("«pillow»", _sin_pdf(ModuleNotFoundError("No module named 'PIL'", name="PIL")))
+        self.assertIn("pip install charset-normalizer",
+                      _sin_pdf(ModuleNotFoundError("x", name="charset_normalizer")))
+
+
+class GestionarVariasTests(TestCase):
+    """Cambiar el estado de varias excepciones a la vez, con una observación para todas."""
+
+    def setUp(self):
+        self.analista = User.objects.create_user("ana", "ana@hotel.cl", "Clave-Prueba-2026")
+        self.client.force_login(self.analista)
+        ventas = VENTAS_MIXTAS + [("Débito", 7000, 70, "000999", "9009"), ("Débito", 8000, 80, "000888", "9008"),
+                                  ("Débito", 9000, 90, "000777", "9007")]
+        resultado = logica_clp.procesar({"bordero": bordero_clp(PAGOS_MIXTOS), "transbank": [transbank("tbk.xlsx", ventas)]})
+        self.c = registro.guardar(Conciliacion.PESOS, self.analista, {}, {}, *resultado, False, 24000)
+        self.e1, self.e2, self.e3 = self.c.excepciones.order_by("orden")
+        self.e1.comentario = "Revisado con recepción"
+        self.e1.save()
+
+    def enviar(self, ids, **datos):
+        return self.client.post("/conciliacion/excepciones/gestionar-varias/",
+                                {"ids": [str(i) for i in ids], "next": "/conciliacion/excepciones/", **datos}, follow=True)
+
+    def test_cambia_el_estado_y_agrega_la_observacion_sin_borrar_la_anterior(self):
+        respuesta = self.enviar([self.e1.pk, self.e2.pk], estado="resuelta", comentario="Corregidas en el ERP")
+        self.assertContains(respuesta, "Se actualizaron 2 excepciones: resuelta, con la observación.")
+        self.e1.refresh_from_db(); self.e2.refresh_from_db(); self.e3.refresh_from_db()
+        self.assertEqual((self.e1.estado, self.e2.estado, self.e3.estado), ("resuelta", "resuelta", "pendiente"))
+        self.assertEqual(self.e1.comentario, "Revisado con recepción\nCorregidas en el ERP")
+        self.assertEqual(self.e2.comentario, "Corregidas en el ERP")
+        self.assertEqual(self.e2.actualizada_por, self.analista)
+
+    def test_sin_observacion_solo_cambia_el_estado(self):
+        self.enviar([self.e3.pk], estado="en_revision")
+        self.e3.refresh_from_db()
+        self.assertEqual((self.e3.estado, self.e3.comentario), ("en_revision", ""))
+
+    def test_validaciones(self):
+        self.assertContains(self.enviar([], estado="resuelta"), "Selecciona al menos una excepción.")
+        self.assertContains(self.enviar([self.e1.pk], estado="otra"), "Elige el nuevo estado")
+        self.e1.refresh_from_db()
+        self.assertEqual(self.e1.estado, "pendiente")
+
+    def test_el_contador_no_puede(self):
+        from apps.usuarios import perfiles
+        contador = User.objects.create_user("conta", "conta@hotel.cl", "Clave-Prueba-2026")
+        perfiles.asignar_perfil(contador, perfiles.CONSULTA)
+        self.client.force_login(contador)
+        self.assertNotContains(self.client.get("/conciliacion/excepciones/"), "data-seleccion-excepcion")
+        self.enviar([self.e1.pk], estado="resuelta")
+        self.e1.refresh_from_db()
+        self.assertEqual(self.e1.estado, "pendiente")
+
+    def test_casillas_y_ventana_en_el_modulo_y_en_el_detalle(self):
+        for url in ("/conciliacion/excepciones/", self.c.get_absolute_url()):
+            pagina = self.client.get(url)
+            self.assertContains(pagina, 'form="form-masivo"', count=3)
+            self.assertContains(pagina, "Cambiar estado…")

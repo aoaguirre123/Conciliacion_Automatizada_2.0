@@ -4094,3 +4094,401 @@ textarea.entrada {
     min-height: 4.5rem;
     resize: vertical;
 }
+
+/* Exportar reporte de excepciones (CU-05) */
+.exportar {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.exportar__titulo {
+    color: var(--tinta-media);
+    font-size: var(--t-sm);
+    font-weight: 600;
+}
+
+.excepciones__acciones {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+}
+
+.filtro-fechas__campos--excepciones {
+    grid-template-columns: minmax(9rem, 12rem) minmax(9rem, 12rem) auto;
+    justify-content: start;
+}
+
+@media (max-width: 600px) {
+    .filtro-fechas__campos--excepciones {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+}
+
+/* Documentos de la conciliación: cada uno en Excel o PDF */
+.descarga__formatos {
+    display: flex;
+    gap: 0.5rem;
+    grid-column: 2;
+    margin-top: 0.4rem;
+}
+
+.descarga__formato {
+    border: 1px solid var(--linea-fuerte);
+    border-radius: 999px;
+    color: var(--enlace);
+    font-size: var(--t-xs);
+    font-weight: 700;
+    padding: 0.25rem 0.8rem;
+    text-decoration: none;
+}
+
+.descarga__formato:hover {
+    background: var(--superficie);
+    border-color: var(--enlace);
+}
+
+/* Mensaje «no hay…» dentro de una tarjeta: con el mismo margen interior que el resto */
+.tarjeta.vacio,
+.tarjeta > .vacio:only-child {
+    padding: 1.5rem clamp(1.25rem, 2.2vw, 1.75rem);
+}
+
+/* Excepciones de la conciliación: plegadas por defecto */
+details.excepciones {
+    display: block;
+}
+
+details.excepciones[open] > summary {
+    margin-bottom: 1rem;
+}
+
+details.excepciones > :not(summary) + :not(summary) {
+    margin-top: 1rem;
+}
+
+.excepciones__cabeza {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    justify-content: space-between;
+}
+
+.excepciones__cabeza > .tarjeta__bajada {
+    flex: 1 1 24rem;
+    margin: 0;
+}
+
+/* Documentos de la conciliación, arriba del resultado */
+.documentos {
+    margin-bottom: 1.5rem;
+}
+
+.documentos .tarjeta__cabeza {
+    margin-bottom: 1rem;
+}
+
+/* Ventas por revisar: compacta, sin desbordar la tarjeta */
+.tabla--revisar {
+    width: 100%;
+}
+
+.tabla.tabla--revisar thead th,
+.tabla.tabla--revisar tbody td {
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
+}
+
+.tabla.tabla--revisar tbody td {
+    padding-bottom: 0.55rem;
+    padding-top: 0.55rem;
+}
+
+.tabla--revisar td.num,
+.tabla--revisar td.monto {
+    white-space: nowrap;
+}
+
+.tabla--revisar .tabla__sub {
+    font-size: var(--t-xs);
+}
+
+/* Botones Excel y PDF de cada documento: al pasar el mouse se tiñen con el color de cada formato */
+.descarga__formato {
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.descarga__formato--excel:hover,
+.descarga__formato--excel:focus-visible {
+    background: #e7f3ec;
+    border-color: #217346;
+    color: #185c37;
+}
+
+.descarga__formato--pdf:hover,
+.descarga__formato--pdf:focus-visible {
+    background: #fdecea;
+    border-color: #c5221f;
+    color: #a50e0e;
+}
+
+:root[data-tema="oscuro"] .descarga__formato--excel:hover,
+:root[data-tema="oscuro"] .descarga__formato--excel:focus-visible {
+    background: #12382a;
+    border-color: #4caf7d;
+    color: #8fd9b0;
+}
+
+:root[data-tema="oscuro"] .descarga__formato--pdf:hover,
+:root[data-tema="oscuro"] .descarga__formato--pdf:focus-visible {
+    background: #3d1715;
+    border-color: #e5675f;
+    color: #f4a19b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .descarga__formato {
+        transition: none;
+    }
+}
+
+/* La tarjeta del documento ya no es un enlace (lo son sus botones Excel y PDF): no se resalta entera. */
+div.descarga:hover {
+    background: var(--superficie);
+    border-color: var(--linea);
+    box-shadow: none;
+    transform: none;
+}
+
+/* Excepciones: panel de filtros ordenado por filas con nombre */
+.panel-filtros {
+    display: grid;
+    gap: 0;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.25rem;
+    padding-top: 0.25rem;
+}
+
+.panel-filtros__fila {
+    align-items: center;
+    border-bottom: 1px solid var(--linea);
+    display: grid;
+    gap: 0.5rem 1.25rem;
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+    margin: 0;
+    padding: 0.85rem 0;
+}
+
+.panel-filtros__nombre {
+    color: var(--tinta-media);
+    font-size: var(--t-xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.filtro__n {
+    font-variant-numeric: tabular-nums;
+    margin-left: 0.2rem;
+    opacity: 0.7;
+}
+
+.filtro--activo .filtro__n {
+    opacity: 0.85;
+}
+
+.panel-filtros__fechas {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.panel-filtros__fechas .entrada {
+    max-width: 11rem;
+    min-height: 40px;
+    min-width: 0;
+}
+
+.panel-filtros__fechas .boton {
+    min-height: 40px;
+}
+
+.panel-filtros__a {
+    color: var(--tinta-suave);
+    font-size: var(--t-sm);
+}
+
+.panel-filtros__quitar {
+    font-size: var(--t-sm);
+    font-weight: 600;
+}
+
+.panel-filtros__pie {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    justify-content: space-between;
+    padding: 0.85rem 0 0.6rem;
+}
+
+.panel-filtros__pie p {
+    color: var(--tinta-media);
+    font-size: var(--t-sm);
+    font-weight: 400;
+    margin: 0;
+}
+
+.panel-filtros__pie strong {
+    color: var(--tinta);
+}
+
+:root[data-tema="oscuro"] .panel-filtros input[type="date"] {
+    color-scheme: dark;
+}
+
+@media (max-width: 700px) {
+    .panel-filtros__fila {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .panel-filtros__fechas .entrada {
+        flex: 1 1 8rem;
+        max-width: none;
+    }
+
+    .panel-filtros__a {
+        display: none;
+    }
+}
+
+/* Excepciones: selección de varias y cambio de estado masivo */
+.masivo__todas {
+    align-items: center;
+    color: var(--tinta-media);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: var(--t-sm);
+    font-weight: 600;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+
+.masivo__todas[hidden] {
+    display: none;
+}
+
+.excepcion__cabeza .seleccion {
+    margin-right: 0.15rem;
+}
+
+.excepcion--seleccionada {
+    background: var(--azul-50);
+    border-color: var(--enlace);
+}
+
+.excepcion--seleccionada .excepcion__sugerencia {
+    background: var(--superficie, #fff);
+}
+
+.masivo__barra {
+    align-items: center;
+    background: var(--azul-950);
+    border-radius: var(--radio-lg);
+    bottom: 1rem;
+    box-shadow: var(--sombra-alta);
+    color: #fff;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    left: 50%;
+    padding: 0.65rem 0.75rem 0.65rem 1.25rem;
+    position: fixed;
+    transform: translateX(-50%);
+    z-index: 30;
+}
+
+.masivo__barra[hidden] {
+    display: none;
+}
+
+.masivo__cuenta {
+    font-size: var(--t-sm);
+    margin-right: 0.5rem;
+}
+
+.masivo__barra .boton--secundario {
+    background: transparent;
+    border-color: rgba(255, 255, 255, 0.45);
+    color: #fff;
+}
+
+.masivo__barra .boton--principal {
+    background: var(--dorado);
+    border-color: var(--dorado);
+    color: var(--azul-950);
+}
+
+:root[data-tema="oscuro"] .masivo__barra {
+    background: #e3e9ef;
+    color: #0e161f;
+}
+
+:root[data-tema="oscuro"] .masivo__barra .boton--secundario {
+    border-color: rgba(14, 22, 31, 0.35);
+    color: #0e161f;
+}
+
+.masivo__ventana {
+    background: var(--superficie);
+    border: 0;
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra-alta);
+    color: var(--tinta);
+    max-width: 30rem;
+    padding: 1.5rem 1.75rem;
+    width: calc(100% - 2rem);
+}
+
+.masivo__ventana::backdrop {
+    background: rgba(6, 28, 48, 0.55);
+}
+
+.masivo__ventana[open] {
+    display: grid;
+    gap: 1.1rem;
+}
+
+.masivo__ventana h2 {
+    margin: 0;
+}
+
+.masivo__botones {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+/* Que la barra fija no tape la última excepción */
+.excepciones__lista {
+    padding-bottom: 0.5rem;
+}
+
+@media (max-width: 600px) {
+    .masivo__barra {
+        border-radius: var(--radio-md);
+        bottom: 0.5rem;
+        justify-content: center;
+        left: 0.5rem;
+        right: 0.5rem;
+        transform: none;
+    }
+
+    .masivo__ventana .segmentado__opcion span {
+        padding: 0.6rem 0.45rem;
+    }
+}

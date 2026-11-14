@@ -19,7 +19,7 @@ from django.utils import timezone
 
 from apps.usuarios.perfiles import es_administrador, solo_administradores, solo_conciliadores
 
-from . import bines, excepciones as ex, graficos, logica, logica_clp, registro
+from . import bines, excepciones as ex, graficos, logica, logica_clp, registro, reporte_excepciones
 from .dolar import dolar_para, fuente_elegida, fuente_otra
 from .forms import ConfiguracionForm, ExcepcionForm
 from .models import Conciliacion, Configuracion, Excepcion, Reporte
@@ -468,6 +468,7 @@ def detalle(request, pk):
     contexto["excepciones_antiguas"] = not lista and "graficos" not in conciliacion.resultado
     contexto["estados_excepcion"] = ex.ESTADOS
     contexto["categorias_excepcion"] = ex.CATEGORIAS
+    contexto["consulta_exportar_conciliacion"] = urlencode({"conciliacion": conciliacion.pk, "estado": "todas"})
     if conciliacion.moneda == Conciliacion.PESOS and "observaciones" in conciliacion.resultado:
         # Las conciliaciones guardadas antes de la v3.6.3 traen las diferencias aceptadas mezcladas.
         filas = conciliacion.resultado["observaciones"]
@@ -491,6 +492,70 @@ def descargar(request, pk, clave):
     nombre = reporte.nombre_archivo.replace(".xlsx", f"_{pk}.xlsx")
     respuesta["Content-Disposition"] = f'attachment; filename="{nombre}"'
     return respuesta
+
+
+# Módulo que falta -> paquete que se instala con pip.
+PAQUETES_PDF = {"reportlab": "reportlab", "PIL": "pillow", "charset_normalizer": "charset-normalizer", "chardet": "chardet"}
+
+
+def _sin_pdf(exc, que="los documentos"):
+    """Aviso cuando falta una librería para el PDF, con el nombre exacto de la que falta."""
+    modulo = (getattr(exc, "name", None) or "reportlab").split(".")[0]
+    paquete = PAQUETES_PDF.get(modulo, modulo)
+    return (f"No se pudo generar el PDF: falta instalar la librería «{paquete}» en el servidor. "
+            f"Instálala con «pip install {paquete}» (o «pip install -r requirements.txt», que instala todo lo "
+            f"necesario) y recarga la aplicación. Mientras tanto, descarga {que} en Excel.")
+
+
+def _respuesta_pdf(contenido, nombre):
+    respuesta = HttpResponse(contenido, content_type="application/pdf")
+    respuesta["Content-Disposition"] = f'attachment; filename="{nombre}"'
+    return respuesta
+
+
+def _documentos_en_pdf(request, conciliacion, reportes, nombre):
+    try:
+        from . import pdf_documentos
+        usuario = request.user.get_full_name() or request.user.get_username()
+        contenido = pdf_documentos.generar(conciliacion, reportes, usuario)
+    except ImportError as exc:
+        logger.exception("Falta una librería para generar PDF")
+        messages.error(request, _sin_pdf(exc))
+        return redirect(conciliacion)
+    except Exception:  # se informa en pantalla y queda en el log
+        logger.exception("No se pudo generar el PDF de la conciliación %s", conciliacion.pk)
+        messages.error(request, "No se pudo generar el PDF. Intenta de nuevo o descarga el Excel; si se repite, avisa al administrador.")
+        return redirect(conciliacion)
+    return _respuesta_pdf(contenido, nombre)
+
+
+@login_required
+def descargar_pdf(request, pk, clave):
+    """Un documento de la conciliación en PDF (el mismo contenido que su Excel)."""
+    reporte = Reporte.objects.select_related("conciliacion").filter(conciliacion_id=pk, clave=clave).first()
+    if reporte is None:
+        if Conciliacion.objects.filter(pk=pk).exists():
+            messages.warning(request, "Ese documento no existe para esta conciliación. Descarga uno de la lista.")
+            return redirect("conciliacion:detalle", pk=pk)
+        messages.warning(request, f"La conciliación N° {pk} no existe o fue borrada del historial.")
+        return redirect("conciliacion:historial")
+    nombre = reporte.nombre_archivo.replace(".xlsx", f"_{pk}.pdf")
+    return _documentos_en_pdf(request, reporte.conciliacion, [reporte], nombre)
+
+
+@login_required
+def descargar_todo_pdf(request, pk):
+    """Todos los documentos de la conciliación en un solo PDF, con una portada con su resumen."""
+    conciliacion = Conciliacion.objects.select_related("usuario").filter(pk=pk).first()
+    if conciliacion is None:
+        messages.warning(request, f"La conciliación N° {pk} no existe o fue borrada del historial.")
+        return redirect("conciliacion:historial")
+    reportes = list(conciliacion.reportes.all())
+    if not reportes:
+        messages.warning(request, "Esta conciliación no tiene documentos guardados.")
+        return redirect(conciliacion)
+    nombre = f"conciliacion_{'pesos' if conciliacion.moneda == Conciliacion.PESOS else 'dolares'}_{pk}.pdf"
+    return _documentos_en_pdf(request, conciliacion, reportes, nombre)
 
 
 # ---------------------------------------------------------------------------
@@ -565,58 +630,145 @@ def _contar_por_estado(excepciones):
     return cuenta
 
 
+def _filtro_excepciones(datos):
+    """Filtros del módulo de excepciones y de su exportación (GET)."""
+    desde, malo_desde = _fecha_param(datos.get("desde"))
+    hasta, malo_hasta = _fecha_param(datos.get("hasta"))
+    avisos = []
+    if malo_desde or malo_hasta:
+        avisos.append("Una de las fechas del filtro no es válida y no se usó. Elígela en el calendario.")
+    if desde and hasta and desde > hasta:
+        desde, hasta = hasta, desde
+        avisos.append("La fecha «desde» era posterior a «hasta»: se invirtieron.")
+    conciliacion = datos.get("conciliacion", "")
+    return {
+        "estado": datos.get("estado") if datos.get("estado") in FILTRO_ESTADO else "abiertas",
+        "categoria": datos.get("categoria") if datos.get("categoria") in ex.NOMBRE_CATEGORIA else "",
+        "moneda": datos.get("moneda") if datos.get("moneda") in (Conciliacion.DOLARES, Conciliacion.PESOS) else "",
+        "desde": desde,
+        "hasta": hasta,
+        "conciliacion": int(conciliacion) if str(conciliacion).isdigit() else None,
+        "avisos": avisos,
+    }
+
+
+def _consulta_excepciones(filtro, **cambios):
+    valores = {**filtro, **cambios}
+    partes = {}
+    for clave in ("estado", "categoria", "moneda", "conciliacion"):
+        if valores.get(clave) and not (clave == "estado" and valores[clave] == "abiertas"):
+            partes[clave] = valores[clave]
+    for clave in ("desde", "hasta"):
+        if valores.get(clave):
+            partes[clave] = valores[clave].isoformat()
+    return urlencode(partes)
+
+
+def _excepciones_filtradas(filtro):
+    """(base sin filtro de estado ni tipo, filtradas por todo). Una conciliación puntual trae todas las
+    suyas; la lista general, solo las vigentes (la última vez que se concilió cada venta)."""
+    base = Excepcion.objects.select_related("conciliacion", "actualizada_por").defer("conciliacion__resultado")
+    if filtro["conciliacion"]:
+        base = base.filter(conciliacion_id=filtro["conciliacion"])
+    else:
+        base = base.filter(vigente=True)
+    if filtro["moneda"]:
+        base = base.filter(conciliacion__moneda=filtro["moneda"])
+    if filtro["desde"]:
+        base = base.filter(fecha__gte=filtro["desde"])
+    if filtro["hasta"]:
+        base = base.filter(fecha__lte=filtro["hasta"])
+    registros = base
+    if filtro["estado"] == "abiertas":
+        registros = registros.filter(estado__in=ABIERTAS)
+    elif filtro["estado"] != "todas":
+        registros = registros.filter(estado=filtro["estado"])
+    sin_tipo = registros
+    if filtro["categoria"]:
+        registros = registros.filter(categoria=filtro["categoria"])
+    return base, sin_tipo, registros.order_by("-conciliacion__creada", "conciliacion_id", "orden")
+
+
 @login_required
 def excepciones(request):
     """Todas las excepciones de las conciliaciones, para ir gestionándolas (por defecto, las abiertas)."""
-    estado = request.GET.get("estado") if request.GET.get("estado") in FILTRO_ESTADO else "abiertas"
-    categoria = request.GET.get("categoria") if request.GET.get("categoria") in ex.NOMBRE_CATEGORIA else ""
-    moneda = request.GET.get("moneda") if request.GET.get("moneda") in (Conciliacion.DOLARES, Conciliacion.PESOS) else ""
-
-    base = (Excepcion.objects.filter(vigente=True).select_related("conciliacion", "actualizada_por")
-            .defer("conciliacion__resultado"))
-    if moneda:
-        base = base.filter(conciliacion__moneda=moneda)
+    filtro = _filtro_excepciones(request.GET)
+    filtro["conciliacion"] = None  # la lista general es de todas las conciliaciones
+    for aviso in filtro["avisos"]:
+        messages.warning(request, aviso)
+    base, sin_tipo, registros = _excepciones_filtradas(filtro)
     por_estado = {fila["estado"]: fila["n"] for fila in base.order_by().values("estado").annotate(n=Count("pk"))}
-    registros = base
-    if estado == "abiertas":
-        registros = registros.filter(estado__in=ABIERTAS)
-    elif estado != "todas":
-        registros = registros.filter(estado=estado)
-    por_categoria = {fila["categoria"]: fila["n"] for fila in registros.order_by().values("categoria").annotate(n=Count("pk"))}
-    if categoria:
-        registros = registros.filter(categoria=categoria)
-    registros = registros.order_by("-conciliacion__creada", "conciliacion_id", "orden")
+    por_categoria = {fila["categoria"]: fila["n"] for fila in sin_tipo.order_by().values("categoria").annotate(n=Count("pk"))}
     pagina = Paginator(registros, 25).get_page(request.GET.get("pagina"))
-
-    def consulta(**cambios):
-        valores = {"estado": estado, "categoria": categoria, "moneda": moneda, **cambios}
-        if valores["estado"] == "abiertas":
-            valores.pop("estado")
-        return urlencode({k: v for k, v in valores.items() if v})
+    consulta = lambda **cambios: _consulta_excepciones(filtro, **cambios)  # noqa: E731
 
     return render(request, "conciliacion/excepciones.html", {
         "pagina": pagina,
-        "estado": estado,
-        "categoria": categoria,
-        "moneda": moneda,
+        "filtro": filtro,
+        "estado": filtro["estado"],
+        "categoria": filtro["categoria"],
+        "moneda": filtro["moneda"],
+        "con_fechas": bool(filtro["desde"] or filtro["hasta"]),
         "filtros_estado": [
-            {"clave": clave, "texto": texto, "consulta": consulta(estado=clave, categoria=""), "activo": clave == estado,
+            {"clave": clave, "texto": texto, "consulta": consulta(estado=clave, categoria=""), "activo": clave == filtro["estado"],
              "n": sum(por_estado.get(e, 0) for e in ABIERTAS) if clave == "abiertas"
              else sum(por_estado.values()) if clave == "todas" else por_estado.get(clave, 0)}
             for clave, texto in FILTRO_ESTADO.items()
         ],
         "filtros_categoria": [
-            {"clave": clave, "texto": texto, "n": por_categoria[clave], "activo": clave == categoria,
-             "consulta": consulta(categoria="" if clave == categoria else clave)}
+            {"clave": clave, "texto": texto, "n": por_categoria[clave], "activo": clave == filtro["categoria"],
+             "consulta": consulta(categoria="" if clave == filtro["categoria"] else clave)}
             for clave, texto in ex.CATEGORIAS if por_categoria.get(clave)
         ],
         "consulta_moneda": {m: consulta(moneda=m) for m in (Conciliacion.DOLARES, Conciliacion.PESOS)},
         "consulta_sin_moneda": consulta(moneda=""),
+        "consulta_sin_fechas": consulta(desde=None, hasta=None),
+        "consulta_sin_tipo": consulta(categoria=""),
+        "texto_categoria": ex.NOMBRE_CATEGORIA.get(filtro["categoria"], ""),
+        "filtrado": bool(filtro["categoria"] or filtro["moneda"] or filtro["desde"] or filtro["hasta"]
+                         or filtro["estado"] != "abiertas"),
         "estados_excepcion": ex.ESTADOS,
         "categorias_excepcion": ex.CATEGORIAS,
         "consulta": consulta(),
-        "texto_estado": FILTRO_ESTADO[estado],
+        "texto_estado": FILTRO_ESTADO[filtro["estado"]],
     })
+
+
+@login_required
+def exportar_excepciones(request):
+    """CU-05: reporte de excepciones en PDF ejecutivo o Excel, con los mismos filtros de la lista."""
+    filtro = _filtro_excepciones(request.GET)
+    formato = "pdf" if request.GET.get("formato") == "pdf" else "xlsx"
+    conciliacion = None
+    if filtro["conciliacion"]:
+        conciliacion = Conciliacion.objects.defer("resultado").filter(pk=filtro["conciliacion"]).first()
+        if conciliacion is None:
+            messages.warning(request, f"La conciliación N° {filtro['conciliacion']} no existe o fue borrada del historial.")
+            return redirect("conciliacion:historial")
+    _, _, registros = _excepciones_filtradas(filtro)
+    datos = reporte_excepciones.Datos(
+        excepciones=list(registros),
+        filtro=filtro,
+        texto_estado=FILTRO_ESTADO[filtro["estado"]],
+        conciliacion=conciliacion,
+        usuario=request.user.get_full_name() or request.user.get_username(),
+        generado=timezone.localtime(),
+    )
+    try:
+        contenido = reporte_excepciones.pdf(datos) if formato == "pdf" else reporte_excepciones.excel(datos)
+    except ImportError as exc:
+        logger.exception("Falta una librería para generar PDF")
+        messages.error(request, _sin_pdf(exc, "el reporte"))
+        return redirect(conciliacion.get_absolute_url() if conciliacion else "conciliacion:excepciones")
+    except Exception:  # se informa en pantalla y queda en el log
+        logger.exception("No se pudo generar el reporte de excepciones")
+        messages.error(request, "No se pudo generar el reporte. Intenta de nuevo; si se repite, avisa al administrador.")
+        return redirect(conciliacion.get_absolute_url() if conciliacion else "conciliacion:excepciones")
+    nombre = f"excepciones_conciliacion_{conciliacion.pk}" if conciliacion else f"excepciones_{datos.generado:%Y-%m-%d}"
+    tipo = "application/pdf" if formato == "pdf" else XLSX
+    respuesta = HttpResponse(contenido, content_type=tipo)
+    respuesta["Content-Disposition"] = f'attachment; filename="{nombre}.{formato}"'
+    return respuesta
 
 
 def _volver(request, excepcion):
@@ -654,3 +806,43 @@ def gestionar_excepcion(request, pk):
         texto += f", ahora como «{excepcion.get_categoria_display()}»"
     messages.success(request, texto + ".")
     return _volver(request, excepcion)
+
+
+@login_required
+@solo_conciliadores(destino="conciliacion:excepciones")
+@solo_post("conciliacion:excepciones")
+def gestionar_varias(request):
+    """Cambia el estado de varias excepciones a la vez y agrega la misma observación a todas."""
+    destino = request.POST.get("next") or ""
+    volver = (redirect(destino) if destino and url_has_allowed_host_and_scheme(
+        destino, allowed_hosts={request.get_host()}, require_https=request.is_secure()) else redirect("conciliacion:excepciones"))
+    ids = [int(i) for i in request.POST.getlist("ids") if str(i).isdigit()]
+    estado = request.POST.get("estado")
+    if estado not in ex.NOMBRE_ESTADO:
+        messages.error(request, "Elige el nuevo estado para las excepciones seleccionadas.")
+        return volver
+    if not ids:
+        messages.warning(request, "Selecciona al menos una excepción.")
+        return volver
+    comentario = (request.POST.get("comentario") or "").strip()[:1000]
+    ahora = timezone.now()
+    excepciones_sel = list(Excepcion.objects.filter(pk__in=ids, vigente=True))
+    for e in excepciones_sel:
+        e.estado = estado
+        if comentario and comentario not in (e.comentario or ""):
+            e.comentario = f"{e.comentario}\n{comentario}".strip() if e.comentario else comentario
+        e.actualizada, e.actualizada_por = ahora, request.user
+    Excepcion.objects.bulk_update(excepciones_sel, ["estado", "comentario", "actualizada", "actualizada_por"])
+    n = len(excepciones_sel)
+    if not n:
+        messages.warning(request, "Las excepciones seleccionadas ya no están vigentes: se volvieron a conciliar.")
+        return volver
+    omitidas = len(set(ids)) - n
+    texto = f"Se {'actualizó' if n == 1 else 'actualizaron'} {n} excepci{'ón' if n == 1 else 'ones'}: {ex.NOMBRE_ESTADO[estado].lower()}"
+    if comentario:
+        texto += ", con la observación"
+    texto += "."
+    if omitidas > 0:
+        texto += f" {omitidas} no se cambiaron porque se volvieron a conciliar."
+    messages.success(request, texto)
+    return volver
