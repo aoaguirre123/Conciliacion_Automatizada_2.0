@@ -79,7 +79,7 @@ existían quedan como Administrador (si eran staff) o Analista de Tesorería.
 
 ## Cómo comprobar que estás viendo esta versión
 
-El pie de página dice **Conciliación bancaria v3.13.0**.
+El pie de página dice **Conciliación bancaria v3.14.0**.
 
 ## Al actualizar desde una versión anterior
 
@@ -98,6 +98,12 @@ Tus usuarios y el historial se mantienen.
   Amex, Diners, Visa y Mastercard, y banco. Transbank puede ser la liquidación antigua o el
   reporte «Abonos por día» en dólares con todos los medios de pago: la marca de cada venta
   (Visa, Mastercard, Amex, Diners) se obtiene del BIN de la tarjeta.
+  Entrega tres Excel con el mismo estilo que los de pesos: «Conciliación completa» (resumen por
+  tarjeta, todas las ventas de Transbank y el ERP sin respaldo), «Por revisar» (con tipo de
+  excepción y acción sugerida) y «ERP sin respaldo en cartolas». Si se cargó Transbank, el ERP
+  sin respaldo lista solo los pagos de las fechas de venta del reporte: la cartola de cada
+  tarjeta es la posición de cuentas por cobrar a un día, y los documentos de otras fechas pueden
+  estar pagados; esos solo se cuentan.
 - Cada pantalla rechaza el reporte de Transbank de la otra moneda (campo «Moneda» del
   encabezado) con un mensaje que indica dónde cargarlo.
 - **En pesos**: abonos de Transbank (crédito, débito y prepago) contra los pagos con

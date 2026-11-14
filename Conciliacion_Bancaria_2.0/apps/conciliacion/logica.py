@@ -28,8 +28,6 @@ from collections import Counter, defaultdict
 from io import BytesIO
 
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.styles import Font
 
 from . import excepciones, graficos, lectura, logica_clp
 from .bines import identificar_local
@@ -611,8 +609,16 @@ def _valor_en_columnas(filas, valor_buscado):
     return False
 
 
-def _procesar_erp(archivos, lector):
+def _procesar_erp(archivos, lector, fechas=None):
+    """Busca cada pago del ERP en la cartola de su tarjeta. Devuelve (diccionario, pagos de otras fechas).
+
+    `fechas`: fechas de venta que traen los reportes de Transbank. Si se cargó Transbank, solo se
+    informan como «sin respaldo» los pagos de esas fechas: la cartola de la tarjeta es la posición
+    de cuentas por cobrar a un día, y los documentos de otras fechas pueden haberse pagado y salido
+    de ella. Los de otras fechas solo se cuentan (igual que el BORDERO sin abono en pesos).
+    """
     diccionario = {}
+    otras_fechas = 0
     erp = _erp(archivos, lector)
     cartolas = {
         CODIGO_A_NOMBRE[codigo]: lector.leer(archivos[campo], COLS_TARJETA) if archivos[campo] else None
@@ -643,9 +649,12 @@ def _procesar_erp(archivos, lector):
             "Status": "encontrado" if encontrado else "no encontrado",
         }
         if not encontrado:
-            _registrar_no_ubicado(tarjeta, documento, valor_buscado, fecha_erp)
+            if fechas is not None and logica_clp._fecha(fecha_erp) not in fechas:
+                otras_fechas += 1
+            else:
+                _registrar_no_ubicado(tarjeta, documento, valor_buscado, fecha_erp)
 
-    return diccionario
+    return diccionario, otras_fechas
 
 
 # ---------------------------------------------------------------------------
@@ -850,11 +859,15 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
         if archivos["archivo7"]:
             _conciliar_transbank_con_erp(archivos, lector, identificar, parametros)
 
-        diccionario = _procesar_erp(archivos, lector) if archivos["archivo1"] else {}
+        fechas_tbk = None
+        if archivos["archivo7"]:
+            fechas_tbk = {logica_clp._fecha(r["fecha_venta"]) for r in informacion_proceso} - {None}
+        diccionario, erp_otras_fechas = _procesar_erp(archivos, lector, fechas_tbk) if archivos["archivo1"] else ({}, 0)
 
         resultado["data"] = _resumen_general(diccionario)
         resultado["data_dolar"] = _resumen_dolar()
         resultado["resumen"] = _resumen_proceso(resultado["data_dolar"], parametros.tolerancia_usd)
+        resultado["resumen"]["erp_otras_fechas"] = erp_otras_fechas
         resultado["parametros"] = parametros.como_dict()
         if archivos["archivo1"]:
             _, resultado["resumen"]["erp_repetidos"], resultado["resumen"]["filas_erp_repetidas"] = lector._tablas["erp"]
@@ -868,73 +881,180 @@ def procesar(archivos, identificar=identificar_local, parametros=None):
         )
 
         reportes = [
-            ("ubicadas", "Transacciones ubicadas", "Abonadas y sus diferencias contra cada cartola.",
-             "transacciones_ubicadas.xlsx", excel_ubicadas()),
-            ("no_ubicadas", "No ubicadas en el ERP", "Transacciones de Transbank sin registro contable.",
-             "transacciones_no_ubicadas.xlsx", excel_no_ubicadas()),
-            ("erp_sin_respaldo", "ERP sin respaldo en cartolas", "Documentos del ERP que no aparecen en la cartola de su tarjeta.",
-             "erp_sin_respaldo_en_cartolas.xlsx", excel_erp_sin_respaldo()),
+            ("completa", "Conciliación completa", "Resumen por tarjeta, todas las ventas de Transbank y el ERP sin respaldo.",
+             "conciliacion_usd_completa.xlsx", excel_completo(resultado)),
+            ("por_revisar", "Por revisar", "Diferencias de monto, ventas sin registro en el ERP y vínculos marcados para revisar.",
+             "conciliacion_usd_por_revisar.xlsx", excel_por_revisar()),
+            ("erp_sin_respaldo", "ERP sin respaldo en cartolas", "Pagos del ERP que no aparecen en la cartola de su tarjeta.",
+             "erp_sin_respaldo_en_cartolas.xlsx", excel_erp_sin_respaldo(resultado["resumen"])),
         ]
         return resultado, reportes
 
 
 # ---------------------------------------------------------------------------
-# Excel de descarga
+# Excel de descarga: mismo estilo que los de la conciliación en pesos (logica_clp._hoja_tabla)
 # ---------------------------------------------------------------------------
-COLUMNAS_PROCESO = [
-    "codigo_autorizacion", "documento", "monto_original", "monto_cartola", "diferencia",
-    "fecha_venta", "tipo_tarjeta", "status", "observacion", "nota", "extra",
+DOLARES = '"US$" #,##0.00;-"US$" #,##0.00;"-"'
+FORMATOS_USD = {"Monto Transbank": DOLARES, "Monto cartola": DOLARES, "Diferencia": DOLARES, "Ventas Transbank": DOLARES,
+                "Por revisar": DOLARES, "Valor ERP": logica_clp.MONEDA}
+ESTADOS_USD = {
+    "conciliada": "Conciliada",
+    "redondeo": "Conciliada con diferencia de redondeo",
+    "diferencia": "Diferencia de monto",
+    "sin_registro": "Sin registro en el ERP",
+    "fuera_periodo": "Fuera del período del ERP",
+}
+COLUMNAS_VENTAS_USD = [
+    ("Fecha venta", "fecha", 12), ("Marca", "marca", 18), ("Cód. autorización", "codigo", 16),
+    ("Monto Transbank", "monto", 16), ("Documento ERP", "documento", 16), ("Valor ERP", "valor_erp", 14),
+    ("Monto cartola", "monto_cartola", 15), ("Diferencia", "diferencia", 13), ("Estado", "estado_texto", 30),
+    ("Observación", "observacion", 48),
 ]
+COLUMNAS_POR_REVISAR_USD = COLUMNAS_VENTAS_USD + [("Tipo de excepción", "excepcion", 28), ("Acción sugerida", "accion_sugerida", 60)]
+COLUMNAS_ERP_SIN_RESPALDO = [("Fecha", "fecha", 12), ("Tarjeta", "tarjeta", 18), ("Documento ERP", "documento", 16),
+                             ("Valor ERP", "valor", 14)]
 
 
-def _excel(df, titulo, subtitulo=None):
-    """Genera el .xlsx (bytes) con título y subtítulo opcional sobre la tabla."""
-    filas_encabezado = 2 if subtitulo else 1
+def _observacion(r):
+    """Nota de la venta, más el aviso de la cartola si no se cargó."""
+    repetidas = {"Diferencia de monto", "Diferencia de redondeo"}  # ya lo dice la columna Estado
+    partes = [n for n in (r.get("nota") or "").split("; ") if n and n not in repetidas]
+    estado = str(r.get("status") or "")
+    if estado.startswith("NO SE CARGO EL ARCHIVO DE "):
+        partes.append(f"No se cargó la cartola de {estado.removeprefix('NO SE CARGO EL ARCHIVO DE ').title()}")
+    return "; ".join(partes)
 
-    buffer = BytesIO()
-    df.to_excel(buffer, index=False, engine="openpyxl", startrow=filas_encabezado)
-    buffer.seek(0)
 
-    wb = load_workbook(buffer)
+def _fila_venta(r):
+    fecha = logica_clp._fecha(r["fecha_venta"])
+    ubicada = r["extra"] == "OK"
+    return {
+        "fecha": f"{fecha:%d-%m-%Y}" if fecha else "",
+        "marca": MARCA_GRAFICO.get(r["tipo_tarjeta"], r["tipo_tarjeta"] or "Sin identificar"),
+        "codigo": _texto_codigo(r["codigo_autorizacion"]),
+        "monto": _num(r["monto_original"]),
+        "documento": r["documento"] if ubicada else "",
+        "valor_erp": r["valor_erp"] if ubicada and r["valor_erp"] else None,
+        "monto_cartola": _num(r["monto_cartola"]) if ubicada and r["monto_cartola"] != "" else None,
+        "diferencia": _num(r["diferencia"]) if ubicada and r["diferencia"] != "" else None,
+        "estado": r["estado"],
+        "estado_texto": ESTADOS_USD.get(r["estado"], r["estado"]),
+        "observacion": _observacion(r),
+    }
+
+
+def _ventas_ordenadas(filas):
+    orden = {"diferencia": 0, "sin_registro": 1, "redondeo": 2, "conciliada": 3, "fuera_periodo": 4}
+    return sorted(filas, key=lambda f: (orden.get(f["estado"], 9), f["marca"], f["fecha"][6:] + f["fecha"][3:5] + f["fecha"][:2]))
+
+
+def filas_por_revisar():
+    """Ventas que hay que revisar, con su tipo de excepción y acción sugerida (las mismas de la pantalla)."""
+    filas = []
+    for r in informacion_proceso:
+        if not excepciones.es_excepcion_usd(r):
+            continue
+        caso = excepciones.caso_usd(r, MARCA_GRAFICO.get, _num, logica_clp._fecha)
+        categoria = excepciones.categoria_de(caso)
+        filas.append({**_fila_venta(r), "excepcion": excepciones.NOMBRE_CATEGORIA[categoria],
+                      "accion_sugerida": excepciones.sugerencia_de(categoria, caso)})
+    return _ventas_ordenadas(filas)
+
+
+def _resumen_por_tarjeta():
+    """Una fila por marca: ventas de Transbank, lo ubicado en la cartola y lo que queda por revisar."""
+    filas = []
+    for codigo, nombre in MARCA_GRAFICO.items():
+        propias = [r for r in informacion_proceso if r["tipo_tarjeta"] == codigo]
+        ubicadas = [r for r in propias if r["extra"] == "OK"]
+        por_revisar = sum(abs(_num(r["diferencia"])) for r in propias if r["estado"] == "diferencia")
+        por_revisar += sum(abs(_num(r["monto_original"])) for r in propias if r["estado"] == "sin_registro")
+        filas.append({
+            "marca": nombre,
+            "ventas": len(propias),
+            "monto": round(sum(_num(r["monto_original"]) for r in propias), 2),
+            "ubicadas": len(ubicadas),
+            "monto_cartola": round(sum(_num(r["monto_cartola"]) for r in ubicadas), 2),
+            "diferencia": round(sum(_num(r["monto_original"]) - _num(r["monto_cartola"]) for r in ubicadas), 2),
+            "por_revisar": round(por_revisar, 2),
+        })
+    return filas
+
+
+def _texto_periodo(resultado):
+    periodo = resultado.get("periodo")
+    textos = [f"Período del ERP: {periodo[0]:%d-%m-%Y} al {periodo[1]:%d-%m-%Y}" if periodo else ""]
+    if resultado.get("abono_calculado"):
+        abono = f"US$ {resultado['abono_calculado']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        if resultado.get("ws") == 1:
+            textos.append(f"Abono de Transbank {abono}: encontrado en el banco")
+        elif "ws" in resultado:
+            textos.append(f"Abono de Transbank {abono}: no encontrado en el banco")
+    return ". ".join(t for t in textos if t) + "." if any(textos) else None
+
+
+def _subtitulo_erp(resumen):
+    texto = "Pagos con tarjeta en dólares del ERP que no aparecen, con el mismo monto en pesos, en la cartola de su tarjeta."
+    if resumen.get("erp_otras_fechas"):
+        texto += (f" Solo se listan los de las fechas de venta de Transbank; se omitieron {resumen['erp_otras_fechas']} "
+                  "de otras fechas, porque la cartola es la posición a un día y pueden estar pagados.")
+    return texto
+
+
+def _filas_erp_sin_respaldo():
+    filas = []
+    for documento, valor, fecha, tarjeta in zip(documento_inf, monto_buscar_inf, fecha_inf, tc_inf):
+        f = logica_clp._fecha(fecha)
+        codigo = next((c for c, n in CODIGO_A_NOMBRE.items() if n == tarjeta), "")
+        filas.append({"fecha": f"{f:%d-%m-%Y}" if f else "", "tarjeta": MARCA_GRAFICO.get(codigo, tarjeta),
+                      "documento": documento, "valor": valor})
+    return filas
+
+
+def excel_completo(resultado):
+    """Resumen por tarjeta, todas las ventas de Transbank y el ERP sin respaldo."""
+    wb = logica_clp.Workbook()
     ws = wb.active
-    ultima_columna = max(df.shape[1], 1)
+    ws.title = "Resumen"
+    filas = _resumen_por_tarjeta()
+    columnas = [("Tarjeta", "marca", 20), ("N° ventas", "ventas", 10), ("Ventas Transbank", "monto", 17),
+                ("Ubicadas en el ERP", "ubicadas", 14), ("Monto cartola", "monto_cartola", 16),
+                ("Diferencia", "diferencia", 14), ("Por revisar", "por_revisar", 14)]
+    inicio = logica_clp._hoja_tabla(ws, "Conciliación en dólares: Transbank vs. ERP y cartolas de tarjetas", columnas,
+                                    filas, _texto_periodo(resultado), FORMATOS_USD)
+    fila_total = inicio + len(filas) + 1
+    ws.cell(row=fila_total, column=1, value="Total").font = logica_clp.FUENTE_NEGRITA
+    for j in range(2, len(columnas) + 1):
+        letra = logica_clp.get_column_letter(j)
+        celda = ws.cell(row=fila_total, column=j, value=f"=SUM({letra}{inicio + 1}:{letra}{fila_total - 1})")
+        celda.font = logica_clp.FUENTE_NEGRITA
+        if columnas[j - 1][0] in FORMATOS_USD:
+            celda.number_format = FORMATOS_USD[columnas[j - 1][0]]
+    ws.cell(row=fila_total + 2, column=1,
+            value="Diferencia: Transbank menos la cartola de la tarjeta, en las ventas ubicadas en el ERP.").font = logica_clp.FUENTE
 
-    ws["A1"] = titulo
-    ws["A1"].font = Font(bold=True, size=13)
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ultima_columna)
-
-    if subtitulo:
-        ws["A2"] = subtitulo
-        ws["A2"].font = Font(italic=True)
-        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ultima_columna)
-
-    salida = BytesIO()
-    wb.save(salida)
-    return salida.getvalue()
-
-
-def _df_proceso(extra):
-    """Filas de informacion_proceso con extra == 'OK' o 'NO', ordenadas como antes."""
-    df = pd.DataFrame(informacion_proceso, columns=COLUMNAS_PROCESO)
-    df = df[df["extra"] == extra]
-    return df.sort_values(by=["tipo_tarjeta", "status"])
-
-
-def excel_erp_sin_respaldo():
-    """Documentos del ERP que no se encontraron en la cartola de su tarjeta."""
-    df = pd.DataFrame({"Documento": documento_inf, "Monto": monto_buscar_inf, "Fecha": fecha_inf, "TC": tc_inf})
-    return _excel(df, "Reporte de Transacciones No Encontradas")
+    logica_clp._hoja_tabla(wb.create_sheet("Transbank vs ERP"), "Todas las ventas de Transbank", COLUMNAS_VENTAS_USD,
+                           _ventas_ordenadas([_fila_venta(r) for r in informacion_proceso]),
+                           "Valor ERP en pesos; montos de Transbank y de la cartola en dólares.", FORMATOS_USD)
+    logica_clp._hoja_tabla(wb.create_sheet("ERP sin respaldo"), "Pagos del ERP sin respaldo en la cartola de su tarjeta",
+                           COLUMNAS_ERP_SIN_RESPALDO, _filas_erp_sin_respaldo(), _subtitulo_erp(resultado["resumen"]),
+                           FORMATOS_USD)
+    return logica_clp._guardar(wb)
 
 
-def excel_ubicadas():
-    """Transacciones de Transbank ubicadas en el ERP, con sus diferencias."""
-    return _excel(_df_proceso("OK"), "Reporte de Transacciones Abonadas y Diferencias")
+def excel_por_revisar():
+    wb = logica_clp.Workbook()
+    ws = wb.active
+    ws.title = "Ventas"
+    logica_clp._hoja_tabla(ws, "Ventas por revisar", COLUMNAS_POR_REVISAR_USD, filas_por_revisar(), None, FORMATOS_USD)
+    return logica_clp._guardar(wb)
 
 
-def excel_no_ubicadas():
-    """Transacciones de Transbank cuyo código de autorización no está en el ERP."""
-    return _excel(
-        _df_proceso("NO").drop_duplicates(),
-        "Reporte de Transacciones No Encontradas",
-        "(Transacciones que no se encuentran en el ERP)",
-    )
+def excel_erp_sin_respaldo(resumen=None):
+    """Pagos del ERP que no se encontraron en la cartola de su tarjeta."""
+    wb = logica_clp.Workbook()
+    ws = wb.active
+    ws.title = "ERP sin respaldo"
+    logica_clp._hoja_tabla(ws, "Pagos del ERP sin respaldo en la cartola de su tarjeta", COLUMNAS_ERP_SIN_RESPALDO,
+                           _filas_erp_sin_respaldo(), _subtitulo_erp(resumen or {}), FORMATOS_USD)
+    return logica_clp._guardar(wb)

@@ -187,7 +187,7 @@ class MotorDolaresTests(SimpleTestCase):
 
     def test_genera_los_tres_excel(self):
         _, reportes = self.procesar()
-        self.assertEqual([r[0] for r in reportes], ["ubicadas", "no_ubicadas", "erp_sin_respaldo"])
+        self.assertEqual([r[0] for r in reportes], ["completa", "por_revisar", "erp_sin_respaldo"])
         for clave, *_, contenido in reportes:
             self.assertTrue(contenido.startswith(b"PK"), clave)
 
@@ -352,10 +352,13 @@ class CruceDolaresTests(SimpleTestCase):
         mastercard = resultado["data_dolar"][2]
         self.assertEqual((mastercard["ventas_cm"], mastercard["ventas_tbk"], mastercard["diferencia"]), (99.5, 100.0, 0.5))
         self.assertEqual(logica.informacion_proceso[0]["diferencia"], 0.5)
-        hoja = load_workbook(io.BytesIO(reportes[0][-1])).active
-        encabezados = [c.value for c in hoja[2]]
-        self.assertIn("monto_cartola", encabezados)
-        self.assertEqual(hoja.cell(row=3, column=encabezados.index("diferencia") + 1).value, 0.5)
+        hoja = load_workbook(io.BytesIO(reportes[0][-1]))["Transbank vs ERP"]
+        encabezados = [c.value for c in hoja[4]]
+        self.assertIn("Monto cartola", encabezados)
+        self.assertEqual(hoja.cell(row=5, column=encabezados.index("Diferencia") + 1).value, 0.5)
+        resumen = load_workbook(io.BytesIO(reportes[0][-1]))["Resumen"]
+        mc = next(f for f in resumen.iter_rows(values_only=True) if f[0] == "Mastercard")
+        self.assertEqual(mc[1:7], (1, 100.0, 1, 99.5, 0.5, 0.5))
 
     def test_venta_sin_marca_toma_la_marca_del_pago(self):
         resultado, _ = self.procesar([self.pago(1, "777")], [self.venta("777", tipo="Sin identificar")], [self.posicion(1)])
@@ -386,7 +389,8 @@ class CruceDolaresTests(SimpleTestCase):
         tarjetas = {"archivo2": "Amex US$", "archivo3": "Dinners US$", "archivo4": "Visa US$", "archivo5": "Master Card US$"}
         pagos = []
         for n, (campo, nombre) in enumerate(tarjetas.items(), start=1):
-            pagos += [self.pago(n, f"{n}11", -1000 * n, tarjeta=nombre), self.pago(90 + n, f"{n}22", -77, tarjeta=nombre)]
+            pagos += [self.pago(n, f"{n}11", -1000 * n, "01-09-2026", tarjeta=nombre),
+                      self.pago(90 + n, f"{n}22", -77, "01-09-2026", tarjeta=nombre)]
             archivos[campo] = xlsx(f"{campo}.xlsx", {"Hoja": [[None] * 15, self.posicion(n, 10.0, 1000 * n)]})
         archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, *pagos]})
         resultado = logica.procesar(archivos)[0]
@@ -397,7 +401,7 @@ class CruceDolaresTests(SimpleTestCase):
 
     def test_erp_contra_cartola_exige_el_mismo_monto_tambien_en_amex(self):
         archivos = archivos_usd()
-        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, self.pago(1, "111", -1000, tarjeta="Amex US$")]})
+        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, self.pago(1, "111", -1000, "01-09-2026", tarjeta="Amex US$")]})
         archivos["archivo2"] = xlsx("amex.xlsx", {"Amex": [[None] * 15, self.posicion(1, 10.0, 5000)]})
         resultado = logica.procesar(archivos)[0]
         self.assertEqual(resultado["data"][0]["ventas_cm"], 0)
@@ -1997,3 +2001,42 @@ class VistaPreviaTests(TestCase):
         self.assertIn("04-12-2025", master["vista"])
         self.assertIn("Total abonado", banco["vista"])
         self.assertEqual(pesos["vista"], "")
+
+
+class ExcelDolaresTests(SimpleTestCase):
+    """CU-02: los Excel en dólares tienen el estilo de los de pesos y el ERP sin respaldo se limita a las fechas de Transbank."""
+
+    pago = CruceDolaresTests.pago
+    venta = CruceDolaresTests.venta
+    posicion = CruceDolaresTests.posicion
+
+    def procesar(self, pagos, ventas, posiciones):
+        archivos = archivos_usd()
+        archivos["archivo1"] = xlsx("erp.xlsx", {"ERP": [[None] * 11, *pagos]})
+        archivos["archivo7"] = xlsx("tbk.xlsx", {"TBK": [[None] * 11, *ventas]})
+        archivos["archivo5"] = xlsx("mc.xlsx", {"MC": [[None] * 15, *posiciones]})
+        return logica.procesar(archivos)
+
+    def test_erp_sin_respaldo_solo_de_las_fechas_de_transbank(self):
+        resultado, reportes = self.procesar(
+            [self.pago(1, "777"), self.pago(2, "888", -500, "10-09-2026"), self.pago(3, "999", -700, "02-08-2026")],
+            [self.venta("777")], [self.posicion(1)])
+        self.assertEqual((resultado["resumen"]["erp_sin_tarjeta"], resultado["resumen"]["erp_otras_fechas"]), (1, 1))
+        hoja = load_workbook(io.BytesIO(reportes[2][4])).active
+        self.assertEqual([c.value for c in hoja[5]], ["10-09-2026", "Mastercard", 2, 500])
+        self.assertIn("se omitieron 1 de otras fechas", hoja["A2"].value)
+
+    def test_por_revisar_con_tipo_y_accion_sugerida(self):
+        _, reportes = self.procesar([self.pago(1, "777"), self.pago(2, "888")],
+                                    [self.venta("777", 100.0), self.venta("888", 90.0), self.venta("555", 40.0)],
+                                    [self.posicion(1), self.posicion(2)])
+        hoja = load_workbook(io.BytesIO(reportes[1][4])).active
+        encabezados = [c.value for c in hoja[3]]
+        self.assertEqual(encabezados[-2:], ["Tipo de excepción", "Acción sugerida"])
+        filas = [dict(zip(encabezados, f)) for f in hoja.iter_rows(min_row=4, values_only=True)]
+        self.assertEqual([f["Estado"] for f in filas], ["Diferencia de monto", "Sin registro en el ERP"])
+        self.assertEqual(filas[0]["Diferencia"], -10.0)
+        self.assertEqual(filas[1]["Tipo de excepción"], "Venta sin registro contable")
+        self.assertEqual(hoja["A1"].font.color.rgb[-6:], "0A2C4A")  # mismo título que en pesos
+        self.assertEqual(hoja.cell(row=3, column=1).fill.fgColor.rgb[-6:], "E6EEF6")
+        self.assertIn("US$", hoja.cell(row=4, column=4).number_format)

@@ -96,56 +96,39 @@ def categoria_de(caso):
 
 
 def sugerencia_de(categoria, caso):
-    """Acción sugerida para resolver el caso, con sus datos."""
+    """Acción sugerida: una instrucción corta (el código y los montos ya se ven en la excepción)."""
     moneda = caso.get("moneda", "CLP")
     registro = "BORDERO" if moneda == "CLP" else "ERP"
-    codigo = caso.get("codigo") or "sin código"
+    codigo = caso.get("codigo") or ""
     documento = caso.get("documento") or ""
-    fecha = caso.get("fecha") or "fecha sin informar"
-    monto = _monto(caso.get("monto"), moneda)
     if categoria == "digitacion":
-        quedo = f" y en el {registro} quedó {documento}" if documento else ""
-        return (f"El código se escribió distinto en el {registro}: en Transbank es {codigo}{quedo}. "
-                f"Corregir el código en el {registro}.")
+        if documento and codigo:
+            return f"Corregir el código en el {registro}: dice {documento}, debe ser {codigo}."
+        return f"Corregir el código en el {registro}" + (f" (debe ser {codigo})." if codigo else ".")
     if categoria == "codigo_distinto":
-        otro = f"otro código ({documento})" if documento else "otro código"
-        return (f"Se cruzó con un pago del mismo monto y fecha, pero con {otro}. Confirmar con el "
-                f"voucher que sea la misma venta y corregir el código en el {registro}.")
+        return f"Confirmar con el voucher y corregir el código en el {registro}."
     if categoria == "fecha_distinta":
-        return (f"El código {codigo} está en el {registro} con otra fecha o en otra venta. Revisar la fecha "
-                f"registrada para la venta del {fecha} y corregirla si corresponde.")
+        fecha = caso.get("fecha") or ""
+        return f"Corregir la fecha en el {registro}" + (f" (debe ser {fecha})." if fecha else ".")
     if categoria == "tarjeta_distinta":
-        return (f"El código {codigo} está en el {registro} como pago de otra tarjeta. Revisar con qué tarjeta se "
-                f"pagó ({caso.get('medio') or 'ver voucher'}) y corregir el pago en el {registro}.")
+        return "Corregir la tarjeta del pago en el ERP."
     if categoria == "monto_distinto":
         if "sin monto en la cartola" in (caso.get("nota") or "").lower():
-            return (f"El pago {documento or 'registrado'} está en el ERP, pero no aparece en la cartola de {caso.get('medio') or 'la tarjeta'}. "
-                    "Revisar que se cargó la cartola correcta y que el pago esté informado por la tarjeta.")
+            return f"Revisar la cartola de {caso.get('medio') or 'la tarjeta'}: el pago no aparece."
         diferencia = abs(_numero(caso.get("diferencia")) or 0)
-        contra = f"el {registro}" if moneda == "CLP" else f"la cartola de {caso.get('medio') or 'la tarjeta'}"
-        texto = (f"Transbank informa {monto} y {contra} {_monto(caso.get('monto_registro'), moneda)} "
-                 f"(diferencia {_monto(caso.get('diferencia'), moneda)}).")
         if diferencia and diferencia <= (1 if moneda == "USD" else 100):
-            return (texto + " Es una diferencia menor, probablemente redondeo. Si estas diferencias son habituales, "
-                    "el administrador puede subir la tolerancia en Configuración.")
-        if moneda == "USD":
-            return texto + " Revisar el voucher y la cartola de la tarjeta, y registrar el ajuste en el ERP si corresponde."
-        return texto + f" Revisar el voucher y corregir el monto en el {registro} o registrar el ajuste."
+            return "Probable redondeo: evaluar subir la tolerancia."
+        return f"Corregir el monto en el {registro} o registrar el ajuste."
     if categoria == "anulacion":
-        return (f"Transbank informa una anulación o nota de crédito por {monto}. Verificar que la venta original y su "
-                f"anulación estén registradas en el {registro}.")
+        return f"Verificar que la venta y su anulación estén en el {registro}."
     if categoria == "cuota_diferida":
-        caso = {**caso, "mes": (caso.get("mes") or "").lower()}
+        mes = (caso.get("mes") or "").lower()
         if caso.get("en_periodo"):
-            return (f"La cuota {caso.get('cuota')} se esperaba en {caso.get('mes')}, dentro de los reportes cargados, "
-                    "y no aparece. Revisarla con Transbank.")
-        mes = caso.get("mes") or "el mes que corresponde"
-        return (f"La cuota {caso.get('cuota')} se espera en {mes}, fuera de los reportes cargados. Conciliar de nuevo "
-                "con reportes de Transbank que incluyan ese mes.")
+            return f"Consultar con Transbank: la cuota de {mes or 'ese mes'} no llegó."
+        return f"Conciliar de nuevo incluyendo {mes or 'el mes de la cuota'}."
     if categoria == "otra":
-        return "Clasificada manualmente: ver el comentario."
-    return (f"La venta {codigo} del {fecha} por {monto} no está en el {registro}. Buscarla en el sistema del hotel; "
-            "si falta, registrarla con este código.")
+        return "Ver comentario."
+    return f"Registrar la venta en el {registro}."
 
 
 # ---------------------------------------------------------------------------
@@ -214,30 +197,33 @@ def desde_clp(observaciones, cuotas=None):
     return casos
 
 
+def es_excepcion_usd(r):
+    """¿La venta en dólares (fila de logica.informacion_proceso) hay que revisarla?"""
+    estado = r.get("estado") or ""
+    nota = r.get("nota") or ""
+    observacion = any(t in nota for t in ("Código digitado distinto", "Cruzado por monto y fecha", "otra fecha"))
+    return estado in ("diferencia", "sin_registro") or (estado in ("conciliada", "redondeo") and observacion)
+
+
+def caso_usd(r, nombre_marca, numero, leer_fecha):
+    fecha = leer_fecha(r.get("fecha_venta"))
+    return {
+        "moneda": "USD",
+        "estado": r.get("estado") or "",
+        "nota": r.get("nota") or "",
+        "fecha": fecha.strftime("%d-%m-%Y") if fecha else "",
+        "medio": nombre_marca(r.get("tipo_tarjeta")) or "",
+        "codigo": str(r.get("codigo_autorizacion") or ""),
+        "documento": str(r.get("documento") or ""),
+        "monto": numero(r.get("monto_original")),
+        "monto_registro": numero(r.get("monto_cartola")) if r.get("monto_cartola") not in ("", None) else None,
+        "diferencia": numero(r.get("diferencia")) if r.get("diferencia") not in ("", None) else None,
+    }
+
+
 def desde_usd(filas_proceso, nombre_marca, numero, leer_fecha):
     """Excepciones de una conciliación en dólares (filas de logica.informacion_proceso)."""
-    casos = []
-    for r in filas_proceso:
-        estado = r.get("estado") or ""
-        nota = r.get("nota") or ""
-        observacion = any(t in nota for t in ("Código digitado distinto", "Cruzado por monto y fecha", "otra fecha"))
-        if estado not in ("diferencia", "sin_registro") and not (estado in ("conciliada", "redondeo") and observacion):
-            continue
-        fecha = leer_fecha(r.get("fecha_venta"))
-        caso = {
-            "moneda": "USD",
-            "estado": estado,
-            "nota": nota,
-            "fecha": fecha.strftime("%d-%m-%Y") if fecha else "",
-            "medio": nombre_marca(r.get("tipo_tarjeta")) or "",
-            "codigo": str(r.get("codigo_autorizacion") or ""),
-            "documento": str(r.get("documento") or ""),
-            "monto": numero(r.get("monto_original")),
-            "monto_registro": numero(r.get("monto_cartola")) if r.get("monto_cartola") not in ("", None) else None,
-            "diferencia": numero(r.get("diferencia")) if r.get("diferencia") not in ("", None) else None,
-        }
-        casos.append(_completar(caso))
-    return casos
+    return [_completar(caso_usd(r, nombre_marca, numero, leer_fecha)) for r in filas_proceso if es_excepcion_usd(r)]
 
 
 def anotar_filas_clp(observaciones):

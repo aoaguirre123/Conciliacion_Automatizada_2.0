@@ -1132,7 +1132,12 @@ COLUMNAS_VENTAS = [
 COLUMNAS_POR_REVISAR = COLUMNAS_VENTAS + [("Tipo de excepción", "excepcion", 28), ("Acción sugerida", "accion_sugerida", 70)]
 
 
-def _hoja_tabla(ws, titulo, columnas, filas, subtitulo=None):
+def _hoja_tabla(ws, titulo, columnas, filas, subtitulo=None, formatos=None):
+    """Hoja con título, subtítulo opcional y tabla con encabezado azul claro, filtros y panel fijo.
+
+    `formatos`: {encabezado: formato de número} para columnas que no son pesos (por ejemplo dólares).
+    """
+    formatos = formatos or {}
     ws["A1"] = titulo
     ws["A1"].font = FUENTE_TITULO
     inicio = 3
@@ -1150,7 +1155,9 @@ def _hoja_tabla(ws, titulo, columnas, filas, subtitulo=None):
         for j, (encabezado, clave, _) in enumerate(columnas, start=1):
             celda = ws.cell(row=i, column=j, value=fila.get(clave))
             celda.font = FUENTE
-            if encabezado.startswith(("Monto", "Diferencia", "Total", "Comisión", "Conciliado", "Por revisar")):
+            if encabezado in formatos:
+                celda.number_format = formatos[encabezado]
+            elif encabezado.startswith(("Monto", "Diferencia", "Total", "Comisión", "Conciliado", "Por revisar")):
                 celda.number_format = MONEDA
     ws.freeze_panes = ws.cell(row=inicio + 1, column=1)
     if filas:

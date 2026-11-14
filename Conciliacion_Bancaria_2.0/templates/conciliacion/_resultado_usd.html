@@ -46,7 +46,7 @@
     {% endif %}
 
     {# Notas: información de contexto, agrupada en una barra cerrada. #}
-    {% if ws == 1 or resumen.erp_repetidos or resumen.filas_erp_repetidas or resumen.fuera_periodo %}
+    {% if ws == 1 or resumen.erp_repetidos or resumen.filas_erp_repetidas or resumen.fuera_periodo or resumen.erp_otras_fechas %}
     <details class="notas">
         <summary>
             <i data-lucide="info" aria-hidden="true"></i>
@@ -55,6 +55,7 @@
                 {% if ws == 1 %}<span>Abono encontrado en el banco</span>{% endif %}
                 {% if resumen.fuera_periodo %}<span>{{ resumen.fuera_periodo }} fuera del período</span>{% endif %}
                 {% if resumen.erp_repetidos or resumen.filas_erp_repetidas %}<span>Datos repetidos del ERP ignorados</span>{% endif %}
+                {% if resumen.erp_otras_fechas %}<span>{{ resumen.erp_otras_fechas }} pagos del ERP de otras fechas</span>{% endif %}
             </span>
             <span class="plegable__mas">Ver <i data-lucide="chevron-down" aria-hidden="true"></i></span>
         </summary>
@@ -69,6 +70,12 @@
             <div class="nota">
                 <strong><i data-lucide="calendar" aria-hidden="true"></i> Ventas fuera del período del ERP</strong>
                 <p>{{ resumen.fuera_periodo }} venta{{ resumen.fuera_periodo|pluralize }} sin registro {{ resumen.fuera_periodo|pluralize:"es,son" }} de fechas que el ERP no cubre, y no se {{ resumen.fuera_periodo|pluralize:"cuenta,cuentan" }} como monto por revisar.</p>
+            </div>
+            {% endif %}
+            {% if resumen.erp_otras_fechas %}
+            <div class="nota">
+                <strong><i data-lucide="calendar-range" aria-hidden="true"></i> Pagos del ERP de otras fechas</strong>
+                <p>{{ resumen.erp_otras_fechas }} pago{{ resumen.erp_otras_fechas|pluralize }} del ERP sin respaldo en la cartola {{ resumen.erp_otras_fechas|pluralize:"es,son" }} de fechas que no trae el reporte de Transbank. No se {{ resumen.erp_otras_fechas|pluralize:"lista,listan" }}: la cartola de la tarjeta es la posición de cuentas por cobrar a un día, y esos documentos pueden estar pagados.</p>
             </div>
             {% endif %}
             {% if resumen.erp_repetidos or resumen.filas_erp_repetidas %}
@@ -93,7 +100,7 @@
         </div>
         <div class="indicador{% if resumen.erp_sin_tarjeta %} indicador--atencion{% endif %}">
             <span class="indicador__valor">{{ resumen.erp_sin_tarjeta }}</span>
-            <span class="indicador__texto">Documentos del ERP sin respaldo en las cartolas</span>
+            <span class="indicador__texto">Pagos del ERP sin respaldo en las cartolas{% if resumen.erp_otras_fechas %} (fechas de Transbank){% endif %}</span>
         </div>
     </div>
 
