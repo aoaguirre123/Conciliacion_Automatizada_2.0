@@ -1,0 +1,34 @@
+{# Vista previa de un archivo antes de conciliar (CU-01). Variable: vista (ver vista_previa.py). soltar.js la muestra bajo el archivo. #}
+<div class="previa">
+    {% if vista.resumen %}
+    <dl class="previa__datos">
+        {% for etiqueta, valor in vista.resumen %}
+        <div class="previa__dato"><dt>{{ etiqueta }}</dt><dd>{{ valor }}</dd></div>
+        {% endfor %}
+    </dl>
+    {% endif %}
+
+    {% if vista.avisos %}
+    <ul class="previa__avisos">
+        {% for aviso in vista.avisos %}
+        <li><i data-lucide="triangle-alert" aria-hidden="true"></i><span>{{ aviso }}</span></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if vista.filas %}
+    <p class="previa__nota">Primeras {{ vista.filas|length }} de {{ vista.total_filas }} {{ vista.nombre_filas }}, tal como se leyeron del archivo</p>
+    <div class="previa__marco">
+        <table class="previa__tabla" aria-label="Primeras filas de {{ vista.titulo }}">
+            <thead>
+                <tr>{% for columna in vista.columnas %}<th scope="col"{% if columna.numero %} class="numero"{% endif %}>{{ columna.nombre }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+                {% for fila in vista.filas %}
+                <tr>{% for valor, es_numero in fila %}<td{% if es_numero %} class="numero"{% endif %}>{{ valor }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>

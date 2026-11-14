@@ -13,13 +13,14 @@ from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.template.loader import render_to_string
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.urls import reverse
 from django.utils import timezone
 
 from apps.usuarios.perfiles import es_administrador, solo_administradores, solo_conciliadores
 
-from . import bines, excepciones as ex, graficos, logica, logica_clp, registro, reporte_excepciones
+from . import bines, excepciones as ex, graficos, logica, logica_clp, registro, reporte_excepciones, vista_previa
 from .dolar import dolar_para, fuente_elegida, fuente_otra
 from .forms import ConfiguracionForm, ExcepcionForm
 from .models import Conciliacion, Configuracion, Excepcion, Reporte
@@ -49,16 +50,26 @@ EJEMPLOS = settings.BASE_DIR / "ejemplos"
 SIN_EJEMPLOS = "No hay archivos de ejemplo en el servidor: súbelos a la carpeta {carpeta} del proyecto."
 
 
-def _identificar(request, clasificar, describir=None):
+def _identificar(request, clasificar, describir=None, previsualizar=None):
     """Campo del formulario al que va cada archivo soltado en el recuadro único (lo usa soltar.js).
 
-    `describir(archivo, tipo)` agrega un resumen del contenido, por ejemplo las fechas que trae.
+    `describir(archivo, tipo)` agrega un resumen corto del contenido, por ejemplo las fechas que trae.
+    `previsualizar(archivo, tipo)` arma la vista previa (CU-01): lo que se leyó del archivo, sus
+    totales y sus primeras filas, para confirmar que es el correcto antes de analizar.
     """
     respuesta = []
     for archivo in request.FILES.getlist("archivos"):
         tipo, motivo = clasificar(archivo)
+        archivo.seek(0)
         detalle = describir(archivo, tipo) if describir and tipo else ""
-        respuesta.append({"nombre": archivo.name, "tipo": tipo, "motivo": motivo, "detalle": detalle})
+        datos = previsualizar(archivo, tipo) if previsualizar and tipo else None
+        detalle = detalle or (datos or {}).get("detalle", "")
+        respuesta.append({
+            "nombre": archivo.name, "tipo": tipo, "motivo": motivo, "detalle": detalle,
+            "vista": render_to_string("conciliacion/_vista_previa.html", {"vista": datos}) if datos else "",
+            "rango": datos["rango"] if datos else None,
+            "avisos": len(datos["avisos"]) if datos else 0,
+        })
     return JsonResponse({"archivos": respuesta})
 
 
@@ -171,7 +182,7 @@ def ejemplo_dolares(request):
 @solo_post("conciliacion:dolares")
 def identificar_dolares(request):
     """Tipo de cada archivo soltado en el recuadro único de la página en dólares."""
-    return _identificar(request, logica.clasificar)
+    return _identificar(request, logica.clasificar, previsualizar=vista_previa.de_dolares)
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +255,9 @@ def ejemplo_pesos(request):
 @solo_post("conciliacion:pesos")
 def identificar_pesos(request):
     """Tipo de cada archivo soltado en el recuadro único de la página en pesos."""
-    return _identificar(request, logica_clp.clasificar, logica_clp.describir)
+    parametros = Configuracion.actual().parametros()
+    return _identificar(request, logica_clp.clasificar, logica_clp.describir,
+                        lambda archivo, tipo: vista_previa.de_pesos(archivo, tipo, parametros))
 
 
 # ---------------------------------------------------------------------------

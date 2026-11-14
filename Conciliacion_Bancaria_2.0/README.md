@@ -79,7 +79,7 @@ existían quedan como Administrador (si eran staff) o Analista de Tesorería.
 
 ## Cómo comprobar que estás viendo esta versión
 
-El pie de página dice **Conciliación bancaria v3.12.0**.
+El pie de página dice **Conciliación bancaria v3.13.0**.
 
 ## Al actualizar desde una versión anterior
 
@@ -119,6 +119,13 @@ Tus usuarios y el historial se mantienen.
   contra las fechas de crédito; Redcompra contra las de débito y prepago. Los de otras fechas
   solo se cuentan, porque su abono viene en reportes de otros días. El cruce sigue usando
   todo el BORDERO.
+- **Vista previa antes de conciliar** (CU-01, en pesos y en dólares): al soltar los archivos, cada
+  uno tiene «Ver datos» con lo que se leyó de él: período, cantidad de pagos, ventas o abonos,
+  montos totales, conteo por tarjeta o medio de pago y sus primeras filas
+  (`apps/conciliacion/vista_previa.py`). Avisa si algo no calza, como un BORDERO sin pagos con
+  tarjeta o una cartola sin abonos de Transbank, y esos archivos se muestran abiertos. Si las
+  ventas de Transbank quedan fuera del período del BORDERO o del ERP, avisa que los archivos
+  parecen de períodos distintos. La vista previa solo informa: nunca impide analizar.
 - **Al analizar** (en pesos, en dólares y con los archivos de ejemplo) se abre una pantalla de
   progreso: la subida de los archivos muestra su avance real y el análisis en el servidor avanza
   por etapas, con el tiempo transcurrido (`static/js/progreso.js`). Si el servidor no responde o

@@ -18,7 +18,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone, translation
 from openpyxl import Workbook, load_workbook
 
-from . import excepciones, graficos, lectura, logica, logica_clp, registro
+from . import excepciones, graficos, lectura, logica, logica_clp, registro, vista_previa
 from .models import Conciliacion, Configuracion, Excepcion
 from .parametros import Parametros
 
@@ -1933,3 +1933,67 @@ class GestionarVariasTests(TestCase):
             pagina = self.client.get(url)
             self.assertContains(pagina, 'form="form-masivo"', count=3)
             self.assertContains(pagina, "Cambiar estado…")
+
+
+class VistaPreviaTests(TestCase):
+    """CU-01: al soltar un archivo se muestra lo que se leyó de él antes de conciliar."""
+
+    def setUp(self):
+        self.usuario = User.objects.create_user("previa", "previa@hotel.cl", "Clave-Prueba-2026")
+        self.client.force_login(self.usuario)
+
+    def test_pesos_muestra_totales_y_primeras_filas(self):
+        respuesta = self.client.post("/conciliacion/pesos/identificar/", {"archivos": [
+            bordero_clp(PAGOS_MIXTOS), transbank("tbk.xlsx", VENTAS_MIXTAS), cartola_clp([38000]),
+        ]})
+        bordero, tbk, cartola = respuesta.json()["archivos"]
+        self.assertIn("4 pagos", bordero["vista"])
+        self.assertIn("$ 38.000", bordero["vista"])
+        self.assertIn("Primeras 4 de 4 pagos", bordero["vista"])
+        self.assertEqual(bordero["rango"], {"desde": "2026-09-07", "hasta": "2026-09-07", "rol": "base"})
+        self.assertIn("4 ventas", tbk["vista"])
+        self.assertEqual(tbk["rango"]["rol"], "ventas")
+        self.assertIn("1 abono", cartola["vista"])
+        self.assertEqual([bordero["avisos"], tbk["avisos"], cartola["avisos"]], [0, 0, 0])
+
+    def test_avisa_lo_que_no_calza(self):
+        respuesta = self.client.post("/conciliacion/pesos/identificar/", {"archivos": [
+            bordero_clp([("E$", 5000, "1")]), cartola_clp([]),
+        ]})
+        bordero, cartola = respuesta.json()["archivos"]
+        self.assertEqual(bordero["avisos"], 1)
+        self.assertIn("No trae pagos con tarjeta en pesos", bordero["vista"])
+        self.assertEqual(cartola["avisos"], 1)
+        self.assertIn("No se encontraron abonos de Transbank", cartola["vista"])
+
+    def test_muestra_solo_las_primeras_filas(self):
+        pagos = [("V$", 1000 + i, str(100 + i)) for i in range(8)]
+        vista = vista_previa.de_pesos(bordero_clp(pagos), "bordero")
+        self.assertEqual(len(vista["filas"]), vista_previa.FILAS_MUESTRA)
+        self.assertEqual((vista["total_filas"], vista["resto"]), (8, 3))
+
+    def test_un_archivo_ilegible_no_impide_la_carga(self):
+        vista = vista_previa.de_pesos(texto("roto.xls", "\x00\x01 basura"), "bordero")
+        self.assertIn("No se pudo leer", vista["avisos"][0])
+
+    def test_dolares_muestra_cada_archivo(self):
+        usd = archivos_usd()
+        master = xlsx("master.xls", {"Sheet 1": [
+            ["HOTEL PLAZA SAN FRANCISCO"],
+            ["Posición Por Clientes en 04/12/2025 - Sin Inclusión de Anticipos"],
+            ["Cliente:", "96.689.310//9 - - TRANSBANK - TARJETA MASTER CARD US$"],
+            fila(15, c1="Asiento", c2="Documento", c12="Otra Moneda", c13="Saldo"),
+            fila(15, c1="01/09/2026", c2=5001, c12=100.0, c13=95000),
+        ]})
+        respuesta = self.client.post("/conciliacion/identificar/", {"archivos": [
+            usd["archivo1"], usd["archivo7"], master, usd["archivo6"], cartola_clp([]),
+        ]})
+        erp, tbk, master, banco, pesos = respuesta.json()["archivos"]
+        self.assertIn("Pagos con tarjeta en dólares", erp["vista"])
+        self.assertEqual(erp["rango"]["rol"], "base")
+        self.assertIn("Total ventas", tbk["vista"])
+        self.assertEqual(tbk["rango"]["rol"], "ventas")
+        self.assertIn("US$ 100,00", master["vista"])
+        self.assertIn("04-12-2025", master["vista"])
+        self.assertIn("Total abonado", banco["vista"])
+        self.assertEqual(pesos["vista"], "")

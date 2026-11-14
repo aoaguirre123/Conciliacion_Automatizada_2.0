@@ -5,6 +5,11 @@
    entrada y se avisa con "change", así conciliacion.js marca las pastillas, el contador y la
    validación como si se hubiera cargado a mano. Nombre, ícono y si admite varios archivos
    salen de cada entrada oculta (data-nombre, data-icono, multiple).
+
+   Vista previa (CU-01): el servidor también manda lo que leyó de cada archivo (totales y primeras
+   filas). Se abre con «Ver datos», y sola si trae avisos. Además se compara el período del
+   registro del hotel (BORDERO o ERP) con las fechas de venta de Transbank: si no se cruzan, se
+   avisa antes de analizar que los archivos parecen de períodos distintos.
 */
 document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('[data-soltar]').forEach(iniciarSoltar);
@@ -16,7 +21,12 @@ function iniciarSoltar(caja) {
     var lista = caja.querySelector('[data-soltados]');
     var url = caja.getAttribute('data-identificar');
     var token = form.querySelector('[name="csrfmiddlewaretoken"]');
-    var soltados = [];  // { archivo, tipo, motivo, pendiente }
+    var soltados = [];  // { archivo, tipo, motivo, pendiente, vista, rango, avisos, abierto }
+    var revision = document.createElement('div');
+    revision.className = 'revision';
+    revision.setAttribute('role', 'status');
+    revision.hidden = true;
+    lista.insertAdjacentElement('afterend', revision);
 
     var tipos = {};
     form.querySelectorAll('[data-archivo] input[type="file"]').forEach(function (e) {
@@ -40,6 +50,45 @@ function iniciarSoltar(caja) {
             destino.files = dt.files;
             destino.dispatchEvent(new Event('change'));
         });
+    }
+
+    function fecha(iso) {
+        var p = iso.split('-');
+        return p[2] + '-' + p[1] + '-' + p[0];
+    }
+    function rango(r) {
+        return r.desde === r.hasta ? fecha(r.desde) : fecha(r.desde) + ' al ' + fecha(r.hasta);
+    }
+
+    // ¿Las ventas de Transbank caen dentro del período del registro del hotel?
+    function revisarPeriodos() {
+        var bases = soltados.filter(function (s) { return s.tipo && s.rango && s.rango.rol === 'base'; });
+        var ventas = soltados.filter(function (s) { return s.tipo && s.rango && s.rango.rol === 'ventas'; });
+        var avisos = [];
+        if (bases.length) {
+            var desde = bases.map(function (s) { return s.rango.desde; }).sort()[0];
+            var hasta = bases.map(function (s) { return s.rango.hasta; }).sort().pop();
+            var base = tipos[bases[0].tipo].etiqueta;
+            ventas.forEach(function (s) {
+                if (s.rango.hasta < desde || s.rango.desde > hasta) {
+                    avisos.push('«' + s.archivo.name + '» trae ventas del ' + rango(s.rango) + ', fuera del período del ' +
+                        base + ' (' + rango({ desde: desde, hasta: hasta }) + ').');
+                }
+            });
+        }
+        revision.innerHTML = '';
+        revision.hidden = !avisos.length;
+        if (!avisos.length) return;
+        revision.innerHTML = '<i data-lucide="calendar-x" aria-hidden="true"></i><div><strong>Los archivos parecen de períodos distintos</strong></div>';
+        var cuerpo = revision.querySelector('div');
+        avisos.forEach(function (texto) {
+            var p = document.createElement('p');
+            p.textContent = texto;
+            cuerpo.appendChild(p);
+        });
+        var cierre = document.createElement('p');
+        cierre.textContent = 'Revisa que sean del mismo período antes de analizar; si lo son, puedes seguir igual.';
+        cuerpo.appendChild(cierre);
     }
 
     function dibujar() {
@@ -66,6 +115,27 @@ function iniciarSoltar(caja) {
             texto.appendChild(nombre);
             texto.appendChild(detalle);
 
+            var ver = null, previa = null;
+            if (tipo && s.vista) {
+                if (s.avisos) li.classList.add('soltado--aviso');
+                previa = document.createElement('div');
+                previa.className = 'soltado__previa';
+                previa.id = 'previa-' + soltados.indexOf(s);
+                previa.innerHTML = s.vista;
+                previa.hidden = !s.abierto;
+                ver = document.createElement('button');
+                ver.type = 'button';
+                ver.className = 'soltado__ver';
+                ver.setAttribute('aria-expanded', s.abierto ? 'true' : 'false');
+                ver.setAttribute('aria-controls', previa.id);
+                ver.innerHTML = '<i data-lucide="' + (s.avisos ? 'triangle-alert' : 'table-2') + '" aria-hidden="true"></i><span></span>';
+                ver.querySelector('span').textContent = s.abierto ? 'Ocultar datos' : (s.avisos ? 'Revisar datos' : 'Ver datos');
+                ver.addEventListener('click', function () {
+                    s.abierto = !s.abierto;
+                    dibujar();
+                });
+            }
+
             var quitar = document.createElement('button');
             quitar.type = 'button';
             quitar.className = 'soltado__quitar';
@@ -79,9 +149,12 @@ function iniciarSoltar(caja) {
 
             li.appendChild(icono);
             li.appendChild(texto);
+            if (ver) li.appendChild(ver);
             li.appendChild(quitar);
+            if (previa) li.appendChild(previa);
             lista.appendChild(li);
         });
+        revisarPeriodos();
         if (window.lucide) window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
     }
 
@@ -105,6 +178,10 @@ function iniciarSoltar(caja) {
                     s.tipo = dato.tipo || null;
                     s.motivo = dato.motivo || 'No se reconoció el archivo.';
                     s.detalle = dato.detalle || '';
+                    s.vista = dato.vista || '';
+                    s.rango = dato.rango || null;
+                    s.avisos = dato.avisos || 0;
+                    s.abierto = s.avisos > 0;  // los archivos con algo raro se muestran abiertos
                     // Las entradas de un solo archivo: el último que se suelta reemplaza al anterior.
                     if (s.tipo && !tipos[s.tipo]) s.tipo = null;
                     if (s.tipo && tipos[s.tipo].unico) {
