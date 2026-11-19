@@ -1,0 +1,72 @@
+===============================================================================
+REPOSITORIO GITHUB DEL PROYECTO
+Conciliación Automatizada 2.0 | Hotel Plaza San Francisco
+Capstone PTY4614 · Ingeniería en Informática · Duoc UC, sede Padre Alonso de Ovalle
+===============================================================================
+
+ENLACES
+  Repositorio (público):  https://github.com/aoaguirre123/Conciliacion_Automatizada_2.0
+  Clonar:                 git clone https://github.com/aoaguirre123/Conciliacion_Automatizada_2.0.git
+  Carpeta Google Drive:   https://drive.google.com/drive/folders/1r__3r5JleDGuKB9gFdndDaJGxt7evbvC?usp=sharing
+
+EQUIPO
+  Aoris Alejandro Aguirre Sanchez    Líder de proyecto y analista     ao.aguirre@duocuc.cl
+  Jesús Antonio Márquez Bahamonde    Desarrollador full-stack          jesu.marquez@duocuc.cl
+  Victor Faviano Yañez Naranjo       Arquitecto de software            vi.yanezn@duocuc.cl
+
+DESCRIPCIÓN
+  Aplicación web que automatiza la conciliación de las ventas con tarjeta del hotel,
+  en pesos (CLP) y dólares (USD): cruza los abonos de Transbank con el BORDERO del
+  ERP CM SFM, las cuentas por cobrar de Amex, Diners, Visa y Mastercard, y la cartola
+  bancaria (BancoEstado y Banco de Chile). Deja solo las excepciones por revisar, con
+  una acción sugerida, y guarda cada conciliación en un historial con reportes Excel/PDF.
+
+VERSIÓN DOCUMENTADA
+  Conciliación bancaria v3.14.0 (noviembre de 2026). El número aparece en el pie de
+  página de la aplicación y en config/settings.py (APP_VERSION).
+
+TECNOLOGÍA
+  Python 3.12+ · Django 5.1+ (plantillas HTML, CSS y JavaScript) · SQLite (piloto,
+  compatible con PostgreSQL vía DATABASE_URL) · pandas, openpyxl, xlrd, lxml, odfpy ·
+  reportlab (PDF) · httpx (dólar observado) · whitenoise.
+
+ESTRUCTURA DEL REPOSITORIO
+  README.md                        Documentación general del proyecto
+  DESPLIEGUE_PYTHONANYWHERE.md     Guía de publicación en PythonAnywhere
+  Conciliacion_Bancaria_2.0/       Código de la aplicación Django
+      config/                      Configuración (settings, urls, formatos es_CL)
+      apps/core/                   Inicio
+      apps/usuarios/               Login por correo, perfiles y usuarios
+      apps/conciliacion/           Motores, modelos, vistas, excepciones, PDF y pruebas
+      templates/  static/          Interfaz
+      requirements.txt  manage.py  README.md
+  Fase 1/                          Evidencias de la Fase 1 (individuales y grupales)
+  Fase 2/                          Evidencias de la Fase 2
+
+PUESTA EN MARCHA (resumen)
+  cd Conciliacion_Bancaria_2.0
+  python -m venv entorno
+  entorno\Scripts\activate            (macOS/Linux: source entorno/bin/activate)
+  pip install -r requirements.txt
+  python manage.py migrate
+  python manage.py createsuperuser
+  python manage.py runserver          → http://127.0.0.1:8000/
+
+PRUEBAS AUTOMÁTICAS
+  python manage.py test apps.conciliacion apps.usuarios     (212 pruebas con datos sintéticos)
+
+DOCUMENTACIÓN EN EL REPOSITORIO
+  - README.md de la raíz: descripción, alcance, stack, arquitectura, estado, usuarios,
+    estructura y metodología.
+  - Conciliacion_Bancaria_2.0/README.md: puesta en marcha, perfiles, qué hace cada
+    pantalla, formatos de archivo aceptados, errores, pruebas y estructura.
+  - DESPLIEGUE_PYTHONANYWHERE.md: publicación paso a paso.
+  - Docstrings en cada módulo explicando su responsabilidad (por ejemplo, las pasadas
+    del cruce al inicio de logica_clp.py y logica.py).
+
+NOTA SOBRE LA COPIA ENTREGADA EN «Código sistema»
+  Corresponde a la rama main del repositorio. Se excluyeron db.sqlite3 (base con la
+  tabla de BIN y un usuario) y la carpeta ejemplos/ (archivos del hotel): la base se
+  recrea con «python manage.py migrate» y los usuarios de prueba con el script de
+  «Base de datos › Script sistema (poblar tablas)».
+===============================================================================
