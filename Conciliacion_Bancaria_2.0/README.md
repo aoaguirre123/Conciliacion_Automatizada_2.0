@@ -18,51 +18,30 @@ Abre http://127.0.0.1:8000/ e ingresa con el correo y la contraseña de tu usuar
 
 En macOS o Linux, activa el entorno con `source entorno/bin/activate`.
 
-## Despliegue en Vercel
+## Publicación en PythonAnywhere
 
-La carpeta que contiene este README es el **Root Directory** del proyecto en Vercel.
-El archivo `vercel.json` y `api/index.py` ya están preparados para publicar Django
-como una función Python.
+La aplicación se publica en PythonAnywhere con la base de datos fuera del repositorio.
+Los pasos están en [`DESPLIEGUE_PYTHONANYWHERE.md`](../DESPLIEGUE_PYTHONANYWHERE.md), en la raíz del repositorio.
 
-1. Crea una base de datos PostgreSQL administrada (por ejemplo, Vercel Postgres,
-   Neon o Supabase).
-2. En Vercel, configura estas variables de entorno para **Production**, **Preview**
-   y, si corresponde, **Development**:
-
-   - `DJANGO_SECRET_KEY`: una clave aleatoria larga y privada.
-   - `DJANGO_DEBUG=0`.
-   - `DATABASE_URL`: la URL de conexión PostgreSQL proporcionada por tu proveedor.
-   - `DJANGO_ALLOWED_HOSTS`: dominios adicionales separados por coma, si los tienes.
-   - `DJANGO_CSRF_TRUSTED_ORIGINS`: URLs completas con `https://`, separadas por coma,
-     para dominios personalizados.
-
-   Vercel agrega automáticamente el dominio `*.vercel.app` a los hosts permitidos.
-3. Ejecuta las migraciones contra esa base antes del primer uso:
-
-   ```
-   python manage.py migrate
-   ```
-
-   En Vercel se puede ejecutar desde el entorno local usando la misma `DATABASE_URL`.
-   La migración de BIN tarda un poco más la primera vez.
-
-SQLite se conserva como alternativa para desarrollo local, pero no debe usarse en
-Vercel: el sistema de archivos de las funciones es efímero y no conserva usuarios,
-historial ni reportes entre ejecuciones.
-
-Para una demostración temporal sin `DATABASE_URL`, el proyecto copia la base SQLite
-incluida al directorio temporal escribible de Vercel. Esta modalidad no garantiza
-persistencia entre invocaciones o nuevos despliegues; para uso real se debe configurar
-PostgreSQL mediante `DATABASE_URL`.
-
-Los archivos subidos se procesan temporalmente durante la solicitud y no se guardan
-como archivos en el servidor; el historial y los Excel generados se almacenan en la
-base de datos.
+Los archivos subidos se procesan durante la solicitud y no se guardan como archivos en el
+servidor; el historial y los Excel generados se almacenan en la base de datos.
 
 ## Usuarios
 
-`db.sqlite3` es la base del proyecto anterior, así que los usuarios existentes siguen
-funcionando. El login pide **correo**, por lo que cada usuario debe tener un correo cargado.
+`db.sqlite3` es una base **de demostración**: trae la base de BIN, ninguna conciliación y
+tres usuarios de prueba, uno por perfil, todos con la contraseña `Prueba-2026-x`:
+
+| Correo | Perfil |
+|---|---|
+| `admin@hoteldemo.cl` | Administrador (superusuario) |
+| `tesoreria@hoteldemo.cl` | Analista de Tesorería |
+| `contabilidad@hoteldemo.cl` | Contador / Auditor |
+
+No uses esta base con datos del hotel: para el uso real se parte con una base vacía
+(`DATABASE_URL` apuntando fuera del repositorio) y se crea el primer administrador con
+`createsuperuser`. Los archivos de `ejemplos/` también son ficticios.
+
+El login pide **correo**, por lo que cada usuario debe tener un correo cargado.
 
 Cada cuenta tiene uno de tres perfiles (`apps/usuarios/perfiles.py`):
 

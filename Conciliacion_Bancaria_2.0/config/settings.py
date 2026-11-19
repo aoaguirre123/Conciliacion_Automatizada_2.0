@@ -1,16 +1,14 @@
 """Configuración del sistema de conciliación bancaria - Hotel Plaza San Francisco."""
 import os
-import shutil
 from pathlib import Path
 
 import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-ON_VERCEL = os.environ.get("VERCEL", "").lower() == "1"
 # PythonAnywhere define PYTHONANYWHERE_DOMAIN (pythonanywhere.com o eu.pythonanywhere.com).
 PYTHONANYWHERE_DOMAIN = os.environ.get("PYTHONANYWHERE_DOMAIN", "")
-EN_SERVIDOR = ON_VERCEL or bool(PYTHONANYWHERE_DOMAIN)
+EN_SERVIDOR = bool(PYTHONANYWHERE_DOMAIN)
 DEBUG = os.environ.get("DJANGO_DEBUG", "0" if EN_SERVIDOR else "1") == "1"
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
@@ -22,11 +20,6 @@ configured_hosts = [
     for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
     if host.strip()
 ]
-if ON_VERCEL:
-    vercel_url = os.environ.get("VERCEL_URL", "")
-    if vercel_url:
-        configured_hosts.append(vercel_url.split(":", 1)[0])
-    configured_hosts.append(".vercel.app")
 if PYTHONANYWHERE_DOMAIN:
     configured_hosts.append(f".{PYTHONANYWHERE_DOMAIN}")
 ALLOWED_HOSTS = configured_hosts or ["127.0.0.1", "localhost"]
@@ -36,11 +29,6 @@ csrf_origins = [
     for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
     if origin.strip()
 ]
-if ON_VERCEL:
-    vercel_url = os.environ.get("VERCEL_URL", "")
-    if vercel_url:
-        csrf_origins.append(f"https://{vercel_url.split(':', 1)[0]}")
-    csrf_origins.append("https://*.vercel.app")
 if PYTHONANYWHERE_DOMAIN:
     csrf_origins.append(f"https://*.{PYTHONANYWHERE_DOMAIN}")
 
@@ -87,17 +75,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-if ON_VERCEL and not os.environ.get("DATABASE_URL"):
-    # Vercel monta el código como solo lectura; el demo SQLite necesita una
-    # copia temporal para poder crear sesiones y guardar conciliaciones.
-    bundled_database = BASE_DIR / "db.sqlite3"
-    demo_database = Path("/tmp/conciliacion-demo.sqlite3")
-    if bundled_database.exists() and not demo_database.exists():
-        demo_database.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(bundled_database, demo_database)
-    database_url = f"sqlite:///{demo_database}"
-else:
-    database_url = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
+database_url = f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
 
 DATABASES = {
     "default": dj_database_url.config(

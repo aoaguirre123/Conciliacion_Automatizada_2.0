@@ -8,4 +8,6 @@ httpx>=0.27    # dólar observado (mindicador.cl)
 dj-database-url>=2.2
 psycopg[binary]>=3.2
 whitenoise>=6.8
-reportlab>=4.0  # reporte de excepciones en PDF
+reportlab>=4.0  # documentos y reporte de excepciones en PDF
+pillow>=9.0     # la usa reportlab
+charset-normalizer>=3.0  # la usa reportlab
