@@ -1,6 +1,8 @@
 """Valor del dólar observado desde mindicador.cl o findic.cl, con respaldo automático y caché de una hora.
 
 Las dos fuentes se consultan a la vez. Si la elegida no responde en 3 segundos, se usa la otra.
+La consulta sigue en segundo plano hasta 15 segundos: si responde tarde (por ejemplo, a través del proxy
+de PythonAnywhere), el valor queda en caché y aparece en la siguiente carga de la página.
 """
 import logging
 import time
@@ -18,7 +20,8 @@ FUENTES = {
     "findic": ("findic.cl", "https://findic.cl/api/dolar"),
 }
 SESION_FUENTE = "fuente_dolar"
-ESPERA_MAXIMA = 3  # segundos que se espera a la fuente elegida antes de usar la otra
+ESPERA_MAXIMA = 3  # segundos que la página espera a las fuentes antes de mostrarse sin el dólar
+TIEMPO_CONSULTA = 15  # segundos que cada consulta puede seguir en segundo plano antes de darse por caída
 
 # Hilos para consultar las APIs sin bloquear: una API colgada no frena la respuesta.
 _hilos = ThreadPoolExecutor(max_workers=8, thread_name_prefix="dolar")
@@ -37,7 +40,7 @@ def obtener_serie_dolar(fuente="mindicador"):
 
     nombre, url = FUENTES[fuente]
     try:
-        respuesta = httpx.get(url, timeout=ESPERA_MAXIMA)
+        respuesta = httpx.get(url, timeout=TIEMPO_CONSULTA)
         respuesta.raise_for_status()
         serie = [
             {
