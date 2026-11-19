@@ -1,0 +1,22 @@
+# Levanta la aplicación en http://localhost:8000 con una base de datos vacía en un volumen.
+# Uso: docker compose up --build
+services:
+  web:
+    build: ./Conciliacion_Bancaria_2.0
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-cambia-esta-clave-secreta}
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DATABASE_URL: sqlite:////datos/db.sqlite3
+      # Primer administrador (se crea solo si aún no existe). El login pide el correo.
+      DJANGO_SUPERUSER_USERNAME: ${ADMIN_EMAIL:-admin@hotel.cl}
+      DJANGO_SUPERUSER_EMAIL: ${ADMIN_EMAIL:-admin@hotel.cl}
+      DJANGO_SUPERUSER_PASSWORD: ${ADMIN_PASSWORD:-Cambiar-2026}
+    volumes:
+      - datos:/datos
+    restart: unless-stopped
+
+volumes:
+  datos:

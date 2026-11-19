@@ -36,13 +36,12 @@ La base va en `~/datos`, fuera del repositorio. Así un `git pull` nunca la pisa
 
 ```bash
 mkdir -p ~/datos
-cp ~/Conciliacion_Automatizada_2.0/Conciliacion_Bancaria_2.0/db.sqlite3 ~/datos/db.sqlite3
 echo 'export DATABASE_URL=sqlite:////home/$USER/datos/db.sqlite3' >> $VIRTUAL_ENV/bin/postactivate
 workon conciliacion
 ```
 
-El `cp` es opcional: copia los usuarios y conciliaciones que ya están en la base del repositorio.
-Si quieres partir con la base vacía, omítelo.
+No copies el `db.sqlite3` del repositorio: es una base de demostración con usuarios de prueba
+cuya contraseña está publicada en el README. La base del servidor se crea vacía en el paso 5.
 
 ## 5. Preparar Django
 
@@ -53,7 +52,7 @@ python manage.py collectstatic --noinput
 python manage.py createsuperuser
 ```
 
-Si copiaste la base y ya tienes usuario, omite `createsuperuser`.
+`migrate` crea la base y carga los BIN de tarjetas (tarda un poco la primera vez). `createsuperuser` crea el primer administrador: usa un correo real, porque el login pide correo.
 
 Genera una clave secreta y guárdala para el paso 7:
 

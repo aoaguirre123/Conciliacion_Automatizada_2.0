@@ -1,0 +1,14 @@
+entorno/
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+*.log
+.env
+.env.*
+.git
