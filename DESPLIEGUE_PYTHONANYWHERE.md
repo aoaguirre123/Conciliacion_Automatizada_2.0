@@ -91,6 +91,8 @@ os.environ["DJANGO_DEBUG"] = "0"
 os.environ["DJANGO_ALLOWED_HOSTS"] = f"{USUARIO}.pythonanywhere.com"
 os.environ["DJANGO_CSRF_TRUSTED_ORIGINS"] = f"https://{USUARIO}.pythonanywhere.com"
 os.environ["DATABASE_URL"] = f"sqlite:////home/{USUARIO}/datos/db.sqlite3"
+# Opcional: API key de la CMF para el dólar observado (pasa el proxy del plan gratuito).
+os.environ["CMF_API_KEY"] = ""
 
 from django.core.wsgi import get_wsgi_application
 
@@ -120,8 +122,9 @@ Después presiona **Reload** en la pestaña **Web**.
   El error real aparece al final del Error log.
 - **Plan gratuito:**
   - Solo permite conexiones a internet hacia una lista de sitios autorizados.
-    Si el valor del dólar observado (mindicador.cl o findic.cl) no carga, esa es la causa.
-    Se soluciona con un plan pagado.
+    mindicador.cl y api.cmfchile.cl están en esa lista; findic.cl no. mindicador.cl a veces responde
+    lento a través del proxy: la aplicación espera en segundo plano y, si no responde, muestra el último
+    valor obtenido. Para tener una segunda fuente que sí funcione, pon tu API key de la CMF en `CMF_API_KEY`.
   - La aplicación se desactiva cada 3 meses si no la renuevas. Para mantenerla activa,
     presiona **Run until 3 months from today** en la pestaña **Web**.
 - **Respaldo de la base:** descarga `~/datos/db.sqlite3` desde la pestaña **Files**.

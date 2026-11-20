@@ -85,6 +85,57 @@ def archivos_usd(formato_tarjeta="xlsx", titulo_en_primera_fila=False):
 # ---------------------------------------------------------------------------
 # Lectura
 # ---------------------------------------------------------------------------
+class DolarTests(SimpleTestCase):
+    """El último dólar obtenido se guarda y se muestra cuando ninguna fuente responde."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def _respuesta(self, valor):
+        respuesta = mock.Mock()
+        respuesta.raise_for_status.return_value = None
+        respuesta.json.return_value = {"serie": [{"fecha": "2026-11-20T03:00:00.000Z", "valor": valor}]}
+        return respuesta
+
+    def test_guarda_el_ultimo_valor_y_lo_usa_si_las_fuentes_fallan(self):
+        from django.core.cache import cache
+        from . import dolar
+        with mock.patch.object(dolar.httpx, "get", return_value=self._respuesta(1008.79)):
+            self.assertEqual(dolar.obtener_dolar()["valor"], 1008.79)
+        cache.delete_many(["serie_dolar_mindicador", "serie_dolar_findic"])  # pasó la hora de caché
+        with mock.patch.object(dolar.httpx, "get", side_effect=dolar.httpx.ConnectError("sin red")):
+            guardado = dolar.obtener_dolar()
+        self.assertEqual(guardado["valor"], 1008.79)
+        self.assertEqual(guardado["fecha"], "20-11-2026")
+        self.assertTrue(guardado["guardado"])
+
+    def test_cmf_con_api_key(self):
+        from . import dolar
+        respuesta = mock.Mock()
+        respuesta.raise_for_status.return_value = None
+        respuesta.json.return_value = {"Dolares": [{"Valor": "1.008,79", "Fecha": "2026-11-20"}]}
+        with mock.patch.dict("os.environ", {"CMF_API_KEY": "clave-prueba"}):
+            self.assertIn("cmf", dolar.fuentes_activas())
+            with mock.patch.object(dolar.httpx, "get", return_value=respuesta) as get:
+                serie = dolar.obtener_serie_dolar("cmf")
+            self.assertEqual(get.call_args.kwargs["params"]["apikey"], "clave-prueba")
+            self.assertEqual(dolar.fuente_otra("findic")["clave"], "cmf")
+            self.assertEqual(dolar.fuente_otra("cmf")["clave"], "mindicador")
+        self.assertEqual(serie, [{"fecha": "20-11-2026", "valor": 1008.79}])
+
+    def test_cmf_sin_api_key_no_se_usa(self):
+        from . import dolar
+        with mock.patch.dict("os.environ", {"CMF_API_KEY": ""}):
+            self.assertNotIn("cmf", dolar.fuentes_activas())
+            self.assertEqual(dolar.fuente_otra("findic")["clave"], "mindicador")
+
+    def test_sin_valor_guardado_y_sin_fuentes_no_hay_dolar(self):
+        from . import dolar
+        with mock.patch.object(dolar.httpx, "get", side_effect=dolar.httpx.ConnectError("sin red")):
+            self.assertIsNone(dolar.obtener_dolar())
+
+
 class LecturaTests(SimpleTestCase):
     def test_detecta_formato_por_contenido(self):
         self.assertEqual(lectura.detectar_formato(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1resto"), "xls")

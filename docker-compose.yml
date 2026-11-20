@@ -10,6 +10,7 @@ services:
       DJANGO_DEBUG: "0"
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
       DATABASE_URL: sqlite:////datos/db.sqlite3
+      CMF_API_KEY: ${CMF_API_KEY:-}
       # Primer administrador (se crea solo si aún no existe). El login pide el correo.
       DJANGO_SUPERUSER_USERNAME: ${ADMIN_EMAIL:-admin@hotel.cl}
       DJANGO_SUPERUSER_EMAIL: ${ADMIN_EMAIL:-admin@hotel.cl}

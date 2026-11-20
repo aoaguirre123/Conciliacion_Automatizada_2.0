@@ -89,7 +89,7 @@ El proyecto reemplaza el procedimiento manual de revisión línea por línea (qu
 - **Base de Datos:** SQLite
 - **Procesamiento de Archivos:** Pandas, OpenPyXL (`.xlsx`), xlrd (`.xls`), lxml (`.xls` exportados como página web) y odfpy (`.ods`)
 - **Reportes PDF:** ReportLab
-- **Servicios Externos:** httpx para el dólar observado (mindicador.cl)
+- **Servicios Externos:** httpx para el dólar observado (mindicador.cl, findic.cl y, con API key, la API de la CMF)
 - **Herramientas:** Git / GitHub
 - **Contenedores:** Docker y Docker Compose (alternativa para levantar la aplicación)
 - **Despliegue:** PythonAnywhere, con WhiteNoise para los archivos estáticos (aplicación web, sin instalación en los equipos del hotel)
@@ -134,7 +134,7 @@ La versión vigente del sistema es **Conciliación bancaria v3.14.0**, desarroll
 
 #### Módulos Disponibles
 * **Conciliación en Pesos (CLP):** Cruce de los abonos de Transbank (**crédito, débito y prepago**, en uno o varios archivos) contra los pagos con tarjeta del **BORDERO** por código de autorización y monto, con verificación del abono en la cartola de **BancoEstado** o **Banco de Chile**. Detecta diferencias de monto, ventas sin registro, ventas fuera del período, errores de digitación del código y datos duplicados. Reconoce las **ventas en cuotas**: cada venta se cruza una sola vez con el BORDERO y se informan las cuotas que no vienen en los reportes cargados, con el mes en que se esperaban, para volver a conciliar con un período más amplio. Al soltar los archivos muestra qué fechas de venta trae cada reporte de Transbank, y los **pagos del BORDERO sin abono** se limitan a esas fechas (crédito y débito por separado), indicando cuántos pagos de otras fechas se omitieron.
-* **Conciliación en Dólares (USD):** Cruce entre Transbank, el BORDERO (ERP), las cuentas por cobrar de **Amex, Diners, Visa y Mastercard** y la cartola en dólares de **Banco de Chile**. Muestra como referencia el dólar observado del día (**mindicador.cl**).
+* **Conciliación en Dólares (USD):** Cruce entre Transbank, el BORDERO (ERP), las cuentas por cobrar de **Amex, Diners, Visa y Mastercard** y la cartola en dólares de **Banco de Chile**. Muestra como referencia el dólar observado del día (**mindicador.cl**, con respaldo en **findic.cl** y en la **API de la CMF** si se configura `CMF_API_KEY`; si ninguna responde, muestra el último valor obtenido).
 * **Historial:** Registro de todas las conciliaciones guardadas, con su resultado y los reportes Excel descargables.
 * **Identificación de Tarjetas:** Cada venta se identifica por los **6 primeros dígitos (BIN)** de la tarjeta: **marca, tipo (crédito, débito o prepago), banco emisor y país**, sin depender de internet. En dólares se usa para saber la marca de cada venta.
 * **Gestión de excepciones:** Cada caso por revisar se clasifica (error de digitación, diferencia de monto, venta sin registro, anulación, cuota diferida, etc.) con una acción sugerida; el analista lo marca en revisión o resuelto, comenta y puede reclasificarlo.
@@ -155,7 +155,7 @@ La versión vigente del sistema es **Conciliación bancaria v3.14.0**, desarroll
 * **Framework:** Django 5.2 (plantillas HTML, CSS y JavaScript)
 * **Base de Datos:** SQLite
 * **Procesamiento de Archivos:** Pandas, OpenPyXL, xlrd, lxml y odfpy (`.xlsx`, `.xls`, `.ods`, CSV y `.xls` exportados como página web; el formato se detecta por contenido)
-* **Servicios Externos:** httpx para consultar el dólar observado en mindicador.cl
+* **Servicios Externos:** httpx para consultar el dólar observado en mindicador.cl, findic.cl y la API de la CMF
 * **Datos de BIN:** [bin-list-data](https://github.com/venelinkochev/bin-list-data) (licencia **CC-BY-4.0**), incluida en el proyecto y cargada en la base de datos con `migrate`
 
 ---
@@ -207,7 +207,9 @@ Luego abrir **http://localhost:8000/**. El contenedor usa una base de datos **va
 DJANGO_SECRET_KEY=una-clave-larga-y-privada
 ADMIN_EMAIL=ti@hotel.cl
 ADMIN_PASSWORD=una-contraseña-segura
+CMF_API_KEY=
 ```
+`CMF_API_KEY` es opcional: con una API key de la CMF (gratuita, en https://api.cmfchile.cl) se suma esa fuente para el dólar observado.
 | Archivo | Para qué sirve |
 | :--- | :--- |
 | `Conciliacion_Bancaria_2.0/Dockerfile` | Imagen con Python 3.13, las dependencias y gunicorn; al iniciar aplica las migraciones y crea el administrador. |
@@ -268,7 +270,7 @@ Conciliacion_Bancaria_2.0/
 │       ├── parametros.py      tolerancias, ventana de días y palabras clave de la cartola (valores por defecto)
 │       ├── forms.py           formulario de la pantalla de configuración
 │       ├── registro.py        guarda cada conciliación en el historial
-│       ├── dolar.py           dólar observado (mindicador.cl)
+│       ├── dolar.py           dólar observado (mindicador.cl, findic.cl y CMF)
 │       ├── bines.py           identificación de tarjetas por BIN
 │       ├── views.py           pantallas, historial y descargas
 │       ├── tests.py           pruebas automáticas con datos sintéticos

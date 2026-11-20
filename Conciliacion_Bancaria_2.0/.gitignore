@@ -12,6 +12,7 @@ __pycache__/
 db.sqlite3
 db.sqlite3-journal
 staticfiles/
+.cache/
 media/
 *.log
 

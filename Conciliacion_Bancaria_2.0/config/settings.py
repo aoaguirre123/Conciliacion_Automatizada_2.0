@@ -1,5 +1,6 @@
 """Configuración del sistema de conciliación bancaria - Hotel Plaza San Francisco."""
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -128,3 +129,15 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "loggers": {"apps": {"handlers": ["console"], "level": "INFO"}},
 }
+
+
+# Caché en archivos: la comparten los procesos del servidor y no se pierde al reiniciar la aplicación
+# (guarda, por ejemplo, el último dólar observado). Las pruebas usan una caché en memoria.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": os.environ.get("DJANGO_CACHE_DIR", str(BASE_DIR / ".cache")),
+    }
+}
+if "test" in sys.argv:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
